@@ -1,0 +1,1 @@
+SELECT OBJECT_ID(@ObjectName);

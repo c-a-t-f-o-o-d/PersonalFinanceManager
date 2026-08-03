@@ -1,0 +1,8 @@
+* text=auto eol=crlf
+*.sln text eol=crlf
+*.cs text eol=crlf
+*.sql text eol=crlf
+*.md text eol=crlf
+*.csv text eol=crlf
+*.xlsx binary
+*.zip binary

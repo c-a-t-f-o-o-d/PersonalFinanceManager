@@ -1,0 +1,45 @@
+name: Bug report
+description: Report a reproducible problem in PersonalFinanceManager
+title: "Bug: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not include real account numbers, bank exports, statements, screenshots with personal financial data, passwords, or private connection strings.
+  - type: input
+    id: version
+    attributes:
+      label: Version or commit
+      description: Which commit, release, or branch are you using?
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Problem
+      description: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Use sanitized sample data whenever possible.
+      placeholder: |
+        1. Open ...
+        2. Click ...
+        3. Observe ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, .NET SDK version, SQL Server type, and any relevant setup details.

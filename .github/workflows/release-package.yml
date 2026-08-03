@@ -1,0 +1,29 @@
+name: Release Package
+
+on:
+  workflow_dispatch:
+
+jobs:
+  package:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Verify baseline and build release package
+        shell: pwsh
+        run: ./scripts/verify-public-baseline.ps1
+
+      - name: Upload release package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PersonalFinanceManager-release-package
+          path: |
+            artifacts/release/*.zip
+            artifacts/release/*.sha256
