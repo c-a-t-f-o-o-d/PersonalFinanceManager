@@ -15,7 +15,6 @@ namespace PersonalFinanceManager.Tests.Database
                 """;
 
             string? version = DatabaseMigrationDescriptor.ExtractSchemaVersion(script);
-
             Assert.AreEqual("2.20.0", version);
         }
 
@@ -38,7 +37,7 @@ namespace PersonalFinanceManager.Tests.Database
         public void FromFile_ComputesScriptNameAndHash()
         {
             DatabaseMigrationDescriptor descriptor = DatabaseMigrationDescriptor.FromFile(
-                System.IO.Path.Combine("temp", "001_create_schema.sql"),
+                Path.Combine("temp", "001_create_schema.sql"),
                 "INSERT INTO dbo.SchemaMetadata (SchemaVersion) VALUES (N'1.0.0');");
 
             Assert.AreEqual("001_create_schema.sql", descriptor.ScriptName);
@@ -60,7 +59,6 @@ namespace PersonalFinanceManager.Tests.Database
                 """;
 
             string? version = DatabaseMigrationDescriptor.ExtractSchemaVersion(script);
-
             Assert.IsNull(version);
         }
     }

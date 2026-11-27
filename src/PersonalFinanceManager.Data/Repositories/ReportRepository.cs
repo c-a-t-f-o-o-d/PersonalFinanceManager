@@ -18,43 +18,69 @@ public sealed class ReportRepository
     }
 
     public async Task<ExpenseReportResult> GetExpenseReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).Expenses(filter);
+    {
+        return (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).Expenses(filter);
+    }
 
     public async Task<CashFlowReportResult> GetCashFlowReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).CashFlow(filter);
+    {
+        return (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).CashFlow(filter);
+    }
 
     public async Task<ExpenseMetricSummary> GetExpenseMetricSummaryAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetExpenseReportAsync(filter, cancellationToken).ConfigureAwait(false)).Metrics;
+    {
+        return (await GetExpenseReportAsync(filter, cancellationToken).ConfigureAwait(false)).Metrics;
+    }
 
     public async Task<IReadOnlyList<ExpenseSummaryItem>> GetExpenseSummaryAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetExpenseReportAsync(filter, cancellationToken).ConfigureAwait(false)).Summary;
+    {
+        return (await GetExpenseReportAsync(filter, cancellationToken).ConfigureAwait(false)).Summary;
+    }
 
     public async Task<IReadOnlyList<MonthlyExpenseTotalItem>> GetMonthlyExpenseTotalsAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetExpenseReportAsync(filter, cancellationToken).ConfigureAwait(false)).Monthly;
+    {
+        return (await GetExpenseReportAsync(filter, cancellationToken).ConfigureAwait(false)).Monthly;
+    }
 
     public async Task<IReadOnlyList<ExpenseDetailItem>> GetExpenseDetailsAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetExpenseReportAsync(filter, cancellationToken).ConfigureAwait(false)).Details;
+    {
+        return (await GetExpenseReportAsync(filter, cancellationToken).ConfigureAwait(false)).Details;
+    }
 
     public async Task<MoneyInOutSummary> GetMoneyInOutSummaryAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetCashFlowReportAsync(filter, cancellationToken).ConfigureAwait(false)).Summary;
+    {
+        return (await GetCashFlowReportAsync(filter, cancellationToken).ConfigureAwait(false)).Summary;
+    }
 
     public async Task<IReadOnlyList<MoneyInOutMonthlyItem>> GetMoneyInOutMonthlyAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetCashFlowReportAsync(filter, cancellationToken).ConfigureAwait(false)).Monthly;
+    {
+        return (await GetCashFlowReportAsync(filter, cancellationToken).ConfigureAwait(false)).Monthly;
+    }
 
     public async Task<IReadOnlyList<MoneyInOutDetailItem>> GetMoneyInOutDetailsAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-        => (await GetCashFlowReportAsync(filter, cancellationToken).ConfigureAwait(false)).Details;
+    {
+        return (await GetCashFlowReportAsync(filter, cancellationToken).ConfigureAwait(false)).Details;
+    }
 
     public async Task<IReadOnlyList<SalarySpendingScopeOption>> GetSalarySpendingScopeOptionsAsync(SalarySpendingFilter filter, CancellationToken cancellationToken = default)
-        => (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).SpendingOptions(filter);
+    {
+        return (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).SpendingOptions(filter);
+    }
 
     public async Task<SalarySpendingAnalysis> GetSalarySpendingAnalysisAsync(SalarySpendingFilter filter, CancellationToken cancellationToken = default)
-        => (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).SalarySpending(filter);
+    {
+        return (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).SalarySpending(filter);
+    }
 
     public async Task<IReadOnlyList<IncomeOwnerSummary>> GetIncomeOwnerSummariesAsync(SalarySpendingFilter filter, CancellationToken cancellationToken = default)
-        => (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).Income(filter);
+    {
+        return (await GetCalculatorAsync(cancellationToken).ConfigureAwait(false)).Income(filter);
+    }
 
     private async Task<FinancialReportCalculator> GetCalculatorAsync(CancellationToken cancellationToken)
-        => new(await GetDataAsync(cancellationToken).ConfigureAwait(false));
+    {
+        return new(await GetDataAsync(cancellationToken).ConfigureAwait(false));
+    }
 
     internal async Task<ReportData> GetDataAsync(CancellationToken cancellationToken)
     {
@@ -67,6 +93,7 @@ public sealed class ReportRepository
         await using SqlCommand command = connection.CreateCommand();
         command.Transaction = transaction;
         command.CommandText = _sqlResources.Read("Reports/GetReportData.sql");
+
         await using (SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false))
         {
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -92,7 +119,9 @@ public sealed class ReportRepository
                     LegacyLinkTreatment = reader.GetBooleanValue("LegacyLinkTreatment")
                 });
             }
+
             await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
+
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 links.Add(new TransactionLinkRecord
@@ -106,7 +135,9 @@ public sealed class ReportRepository
                     Notes = reader.GetStringOrNull("Notes")
                 });
             }
+
             await reader.NextResultAsync(cancellationToken).ConfigureAwait(false);
+
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 bills.Add(new RecurringBill
@@ -126,6 +157,7 @@ public sealed class ReportRepository
                 });
             }
         }
+
         await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         return new ReportData { Transactions = transactions, Links = links, Bills = bills };
     }

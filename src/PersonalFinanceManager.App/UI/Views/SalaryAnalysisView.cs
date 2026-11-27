@@ -694,7 +694,12 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             HashSet<string> selectedKeys = GetSelectedBuckets().Select(BuildBucketKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
             SalarySpendingFilter filter = BuildScopeOptionFilter();
-            if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate) return;
+
+            if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
+            {
+                return;
+            }
+
             _scopeOptions = await _analysisService.GetSalarySpendingScopeOptionsAsync(filter).ConfigureAwait(true);
             _scopeList.SuspendLayout();
             _scopeList.Controls.Clear();
@@ -803,18 +808,26 @@ namespace PersonalFinanceManager.App.UI.Views
         private async Task RefreshAsync()
         {
             SalarySpendingFilter spendingFilter = BuildSpendingFilter();
+
             if (spendingFilter.FromDate.HasValue && spendingFilter.ToDate.HasValue && spendingFilter.FromDate > spendingFilter.ToDate)
             {
                 MessageBox.Show(this, "The start date must be on or before the end date.", "Salary Needed", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
             SalarySpendingAnalysis spending = await _analysisService.GetSalarySpendingAnalysisAsync(spendingFilter).ConfigureAwait(true);
             IReadOnlyList<IncomeOwnerSummary> incomeSummaries = spending.IncomeOwnerSummaries;
             UpdateIncomeOwnerSummary(incomeSummaries);
-            if (!spending.Period.HasObservedTransactions) _spousePostedIncomeSummary.Text = "Posted income coverage is unknown for this period.";
+
+            if (!spending.Period.HasObservedTransactions)
+            {
+                _spousePostedIncomeSummary.Text = "Posted income coverage is unknown for this period.";
+            }
+
             _reviewNotes.Lines = spending.Warnings.ToArray();
             _monthlySource.DataSource = spending.MonthlyTrend;
             _inputSource.DataSource = spending.InputLines;
+
             if (!spending.CanEstimate)
             {
                 _salaryMetric.Text = "Review inputs";
@@ -826,12 +839,23 @@ namespace PersonalFinanceManager.App.UI.Views
                 _periodSummary.Text = "A reliable salary estimate is unavailable. See Review notes for missing history, bill amounts, or overlapping inputs.";
                 return;
             }
+
             SalaryRequirementInput input = BuildSalaryInput(spending.TargetMonthlySpending);
-            if (input.SpouseIncomeMode == SpouseIncomeMode.PostedNet && input.SpouseMonthlyNetIncome > 0M
-                && input.SpouseAnnualGrossIncome == 0M && input.FilingStatus == FilingStatus.MarriedFilingJointly)
+
+            if (input.SpouseIncomeMode == SpouseIncomeMode.PostedNet &&
+                input.SpouseMonthlyNetIncome > 0M &&
+                input.SpouseAnnualGrossIncome == 0M &&
+                input.FilingStatus == FilingStatus.MarriedFilingJointly)
+            {
                 _reviewNotes.Lines = spending.Warnings.Append("Spouse gross income is not supplied. The joint marginal-tax estimate may be too low; enter gross income for tax context when known.").ToArray();
+            }
+
             SalaryRequirementResult result;
-            try { result = _calculator.CalculateRequiredSalary(input); }
+
+            try
+            {
+                result = _calculator.CalculateRequiredSalary(input);
+            }
             catch (ArgumentException ex)
             {
                 _salaryMetric.Text = "Review inputs";
@@ -842,6 +866,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 _periodSummary.Text = ex.Message;
                 return;
             }
+
             _monthlySource.DataSource = spending.MonthlyTrend;
             _inputSource.DataSource = spending.InputLines;
             _breakdownSource.DataSource = result.BreakdownLines;

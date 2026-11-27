@@ -18,6 +18,7 @@ public static class BillSchedule
     public static decimal MonthlyEquivalent(decimal amount, string? frequency)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(amount);
+
         decimal monthly = NormalizeFrequency(frequency) switch
         {
             BillFrequencies.Weekly => amount * 52M / 12M,
@@ -27,17 +28,22 @@ public static class BillSchedule
             BillFrequencies.Annual => amount / 12M,
             _ => amount
         };
+
         return decimal.Round(monthly, 2, MidpointRounding.AwayFromZero);
     }
 
-    public static bool IsRequiredExpense(RecurringBill bill) => bill.IsActive && bill.IsRequired
-        && !string.Equals(bill.RequirementType?.Trim(), BillRequirementTypes.Ignore, StringComparison.OrdinalIgnoreCase)
-        && !string.Equals(bill.RequirementType?.Trim(), BillRequirementTypes.Transfer, StringComparison.OrdinalIgnoreCase);
+    public static bool IsRequiredExpense(RecurringBill bill)
+    {
+        return bill.IsActive && bill.IsRequired &&
+            !string.Equals(bill.RequirementType?.Trim(), BillRequirementTypes.Ignore, StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(bill.RequirementType?.Trim(), BillRequirementTypes.Transfer, StringComparison.OrdinalIgnoreCase);
+    }
 
     public static DateOnly Occurrence(DateOnly anchor, string frequency, int occurrenceIndex, int? dueDay = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(occurrenceIndex);
         string cadence = NormalizeFrequency(frequency);
+
         if (cadence is BillFrequencies.Weekly or BillFrequencies.Biweekly)
         {
             return anchor.AddDays(occurrenceIndex * (cadence == BillFrequencies.Weekly ? 7 : 14));
@@ -52,12 +58,14 @@ public static class BillSchedule
     public static DateOnly NextOnOrAfter(DateOnly anchor, string frequency, DateOnly onOrAfter, int? dueDay = null)
     {
         string cadence = NormalizeFrequency(frequency);
+
         if (onOrAfter <= anchor)
         {
             return anchor;
         }
 
         int index;
+
         if (cadence is BillFrequencies.Weekly or BillFrequencies.Biweekly)
         {
             int interval = cadence == BillFrequencies.Weekly ? 7 : 14;
@@ -70,6 +78,7 @@ public static class BillSchedule
         }
 
         DateOnly next = index == 0 ? anchor : Occurrence(anchor, cadence, index, dueDay);
+
         while (next < onOrAfter)
         {
             next = Occurrence(anchor, cadence, ++index, dueDay);
@@ -80,14 +89,23 @@ public static class BillSchedule
     public static string? InferFrequency(IEnumerable<DateOnly> transactionDates)
     {
         DateOnly[] dates = transactionDates.Order().ToArray();
+
         if (dates.Length < 3 || dates.Distinct().Count() != dates.Length)
         {
             return null;
         }
 
         int[] gaps = dates.Zip(dates.Skip(1), (first, second) => second.DayNumber - first.DayNumber).ToArray();
-        if (gaps.All(gap => gap is >= 5 and <= 9)) return BillFrequencies.Weekly;
-        if (gaps.All(gap => gap is >= 12 and <= 16)) return BillFrequencies.Biweekly;
+
+        if (gaps.All(gap => gap is >= 5 and <= 9))
+        {
+            return BillFrequencies.Weekly;
+        }
+
+        if (gaps.All(gap => gap is >= 12 and <= 16))
+        {
+            return BillFrequencies.Biweekly;
+        }
 
         foreach ((string frequency, int months) in new[] { (BillFrequencies.Monthly, 1), (BillFrequencies.Quarterly, 3), (BillFrequencies.Semiannual, 6), (BillFrequencies.Annual, 12) })
         {
@@ -96,6 +114,7 @@ public static class BillSchedule
                 return frequency;
             }
         }
+
         return null;
     }
 }

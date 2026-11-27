@@ -48,11 +48,11 @@ public sealed class RecurringBillEditForm : Form
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(root);
-
         _account.DropDownStyle = ComboBoxStyle.DropDownList;
         _account.DisplayMember = nameof(AccountOption.DisplayName);
         _account.ValueMember = nameof(AccountOption.AccountId);
         _account.Items.Add(new AccountOption(null, "No account"));
+
         foreach (Account account in _accounts.OrderBy(account => account.DisplayName))
         {
             _account.Items.Add(new AccountOption(account.AccountId, account.DisplayName));
@@ -183,7 +183,6 @@ public sealed class RecurringBillEditForm : Form
         _nextDueDate.Checked = Bill.NextDueDate.HasValue;
         _nextDueDate.Value = Bill.NextDueDate?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today;
         _frequency.SelectedItem = Bill.Frequency;
-
         _isRequired.Checked = Bill.IsRequired;
         _isActive.Checked = Bill.IsActive;
         _sourceDescription.Text = Bill.SourceDescription ?? string.Empty;
@@ -222,7 +221,10 @@ public sealed class RecurringBillEditForm : Form
             throw new InvalidOperationException("Payee is required.");
         }
 
-        if (_frequency.SelectedIndex < 0) throw new InvalidOperationException("Choose a bill frequency; the historical cadence could not be established automatically.");
+        if (_frequency.SelectedIndex < 0)
+        {
+            throw new InvalidOperationException("Choose a bill frequency; the historical cadence could not be established automatically.");
+        }
 
         Bill.BillName = billName;
         Bill.Payee = payee;

@@ -302,8 +302,15 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             IReadOnlyList<Account> accounts = await _runwayService.GetAccountsAsync().ConfigureAwait(true);
             IReadOnlyList<RecurringBill> bills = await _runwayService.GetBillsAsync().ConfigureAwait(true);
-            RunwayAnalysisResult result = new RunwayCalculator().Calculate(accounts, bills, Convert.ToString(_scenario.SelectedItem) ?? "Strict",
-                _monthlyIncome.Value, decimal.ToInt32(_projectionMonths.Value), DateOnly.FromDateTime(DateTime.Today));
+
+            RunwayAnalysisResult result = new RunwayCalculator().Calculate(
+                accounts,
+                bills,
+                Convert.ToString(_scenario.SelectedItem) ?? "Strict",
+                _monthlyIncome.Value,
+                decimal.ToInt32(_projectionMonths.Value),
+                DateOnly.FromDateTime(DateTime.Today));
+
             _availableBalanceMetric.Text = result.HasKnownBalance ? result.StartingAvailableBalance.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
             _monthlyBillsMetric.Text = result.MonthlyRequiredExpenses.ToString("C2", CultureInfo.CurrentCulture);
             _monthlyBurnMetric.Text = result.MonthlyNetBurn.ToString("C2", CultureInfo.CurrentCulture);

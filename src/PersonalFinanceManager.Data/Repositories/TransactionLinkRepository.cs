@@ -44,7 +44,6 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = ReadSqlWithTopAndWhere("TransactionLinks/GetLinks.sql", maxRows, where);
 
             foreach (SqlParameter parameter in parameters)
@@ -68,9 +67,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("TransactionLinks/GetLinkTypes.sql");
-
             List<string> values = new();
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
@@ -104,7 +101,6 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = ReadSqlWithTopAndWhere("TransactionLinks/GetTransactionOptions.sql", normalizedMaxRows, where);
 
             foreach (SqlParameter parameter in parameters)
@@ -149,14 +145,17 @@ namespace PersonalFinanceManager.Data.Repositories
                 FinancialLinkState state = await FinancialLinkStore.LoadAsync(connection, transaction, _sqlResources, cancellationToken).ConfigureAwait(false);
                 FinancialLinkStore.Validate(state, model);
                 FinancialLink? previous = state.Links.FirstOrDefault(link => link.Id == model.TransactionLinkId);
-                if (previous is not null && (previous.SourceId != model.SourceTransactionId || previous.LinkedId != model.LinkedTransactionId
-                    || TransactionLinkTypes.Normalize(previous.Type) != model.LinkType))
+
+                if (previous is not null &&
+                    (previous.SourceId != model.SourceTransactionId || previous.LinkedId != model.LinkedTransactionId || TransactionLinkTypes.Normalize(previous.Type) != model.LinkType))
                 {
                     await RejectAsync(connection, transaction, previous.Id, cancellationToken).ConfigureAwait(false);
                 }
+
                 long linkId = model.TransactionLinkId == 0
                     ? await InsertAsync(connection, transaction, model, cancellationToken).ConfigureAwait(false)
                     : await UpdateAsync(connection, transaction, model, cancellationToken).ConfigureAwait(false);
+
                 await using SqlCommand clear = connection.CreateCommand();
                 clear.Transaction = transaction;
                 clear.CommandText = _sqlResources.Read("TransactionLinks/ClearRejection.sql");
@@ -179,6 +178,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
+
             try
             {
                 await RejectAsync(connection, transaction, transactionLinkId, cancellationToken).ConfigureAwait(false);

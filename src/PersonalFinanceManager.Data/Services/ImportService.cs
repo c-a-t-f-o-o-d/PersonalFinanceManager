@@ -70,8 +70,11 @@ namespace PersonalFinanceManager.Data.Services
         {
             ITransactionParser parser = GetParser(profileCode);
             ParseResult parse = await parser.ParseAsync(filePath, cancellationToken).ConfigureAwait(false);
-            Account account = await new AccountRepository(_connectionFactory, new AccountDataProtector()).GetByIdAsync(accountId, cancellationToken: cancellationToken).ConfigureAwait(false)
-                ?? throw new InvalidOperationException("The selected account no longer exists.");
+
+            Account account = await new AccountRepository(_connectionFactory, new AccountDataProtector())
+                .GetByIdAsync(accountId, cancellationToken: cancellationToken)
+                .ConfigureAwait(false) ?? throw new InvalidOperationException("The selected account no longer exists.");
+
             ImportAccountValidation.Validate(account, profileCode, parse);
             IReadOnlyList<FinancialRule> rules = await _ruleRepository.GetActiveAsync(cancellationToken).ConfigureAwait(false);
             List<ImportedTransaction> rows = new();
@@ -101,8 +104,10 @@ namespace PersonalFinanceManager.Data.Services
         {
             ITransactionParser parser = GetParser(profileCode);
             ParseResult parse = await parser.ParseAsync(filePath, cancellationToken).ConfigureAwait(false);
-            Account account = await new AccountRepository(_connectionFactory, new AccountDataProtector()).GetByIdAsync(accountId, cancellationToken: cancellationToken).ConfigureAwait(false)
-                ?? throw new InvalidOperationException("The selected account no longer exists.");
+
+            Account account = await new AccountRepository(_connectionFactory, new AccountDataProtector())
+                .GetByIdAsync(accountId, cancellationToken: cancellationToken).ConfigureAwait(false) ?? throw new InvalidOperationException("The selected account no longer exists.");
+
             ImportAccountValidation.Validate(account, profileCode, parse);
             IReadOnlyList<FinancialRule> rules = await _ruleRepository.GetActiveAsync(cancellationToken).ConfigureAwait(false);
             string fileHash = await ComputeSha256Async(filePath, cancellationToken).ConfigureAwait(false);
@@ -192,7 +197,6 @@ namespace PersonalFinanceManager.Data.Services
             await using (SqlCommand select = connection.CreateCommand())
             {
                 select.CommandText = _sqlResources.Read("ImportService/ReapplyRulesSelectTransactions.sql");
-
                 await using SqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -380,11 +384,13 @@ namespace PersonalFinanceManager.Data.Services
             return InferCategoryTypeFromImportedValues(parsed.SourceCategory, parsed.Type);
         }
 
-        private static bool GetDefaultIsIncome(ParsedTransaction parsed, string? accountType) =>
-            (parsed.Amount > 0 || ImportClassification.IsExplicitIncome(parsed.Type))
-            && !ImportClassification.RequiresReview(parsed.Type) && !AccountClassification.IsLiability(accountType)
-            && !parsed.Type.Contains("Buyer Credit Payment", StringComparison.OrdinalIgnoreCase)
-            && !IsCreditCardReturnOrCredit(parsed) && !IsParsedTransfer(parsed);
+        private static bool GetDefaultIsIncome(ParsedTransaction parsed, string? accountType)
+        {
+            return (parsed.Amount > 0 || ImportClassification.IsExplicitIncome(parsed.Type)) &&
+                !ImportClassification.RequiresReview(parsed.Type) && !AccountClassification.IsLiability(accountType) &&
+                !parsed.Type.Contains("Buyer Credit Payment", StringComparison.OrdinalIgnoreCase) &&
+                !IsCreditCardReturnOrCredit(parsed) && !IsParsedTransfer(parsed);
+        }
 
         private static bool IsCreditCardPayment(ParsedTransaction parsed, string? accountType)
         {
@@ -451,9 +457,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/CreateBatch.sql");
-
             command.Parameters.Add(SqlParameters.Int("@AccountId", accountId));
             command.Parameters.Add(SqlParameters.NVarChar("@ImportProfileCode", profileCode, 100));
             command.Parameters.Add(SqlParameters.NVarChar("@OriginalFileName", fileName, 260));
@@ -486,8 +490,11 @@ namespace PersonalFinanceManager.Data.Services
                 deleted.Transaction = transaction;
                 deleted.CommandText = _sqlResources.Read("ImportService/FindPreviouslyDeletedImportRow.sql");
                 AddDuplicateParameters(deleted, imported, rowHash);
+
                 if (await deleted.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not null)
+                {
                     return DuplicateClassification.Review(null, "A matching source row was previously deleted. Review before restoring it to the ledger.");
+                }
             }
 
             (long? MatchId, string Reason) broadMatch = await FindQuestionableDateAmountMatchAsync(connection, transaction, imported, cancellationToken).ConfigureAwait(false);
@@ -504,9 +511,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/FindExactDuplicateTransactionId.sql");
-
             AddDuplicateParameters(command, imported, rowHash);
             object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return value is null or DBNull ? null : Convert.ToInt64(value);
@@ -516,9 +521,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/FindQuestionableExternalIdMatch.sql");
-
             command.Parameters.Add(SqlParameters.Int("@AccountId", imported.AccountId));
             command.Parameters.Add(SqlParameters.BigInt("@ImportBatchId", imported.ImportBatchId));
             command.Parameters.Add(SqlParameters.NVarChar("@ExternalTransactionId", imported.ExternalTransactionId, 100));
@@ -530,9 +533,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/FindQuestionableDateAmountMatch.sql");
-
             command.Parameters.Add(SqlParameters.Int("@AccountId", imported.AccountId));
             command.Parameters.Add(SqlParameters.BigInt("@ImportBatchId", imported.ImportBatchId));
             command.Parameters.Add(SqlParameters.Date("@TransactionDate", imported.TransactionDate));
@@ -571,9 +572,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/InsertImportRow.sql");
-
             command.Parameters.Add(SqlParameters.BigInt("@ImportBatchId", batchId));
             command.Parameters.Add(SqlParameters.Int("@RowNumber", rowNumber));
             command.Parameters.Add(SqlParameters.NVarChar("@Status", status, 30));
@@ -606,9 +605,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/InsertTransaction.sql");
-
             command.Parameters.Add(SqlParameters.Int("@AccountId", imported.AccountId));
             command.Parameters.Add(SqlParameters.BigInt("@ImportBatchId", imported.ImportBatchId));
             command.Parameters.Add(SqlParameters.Date("@TransactionDate", imported.TransactionDate));
@@ -636,6 +633,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             FinancialLinkState state = await FinancialLinkStore.LoadAsync(connection, transaction, _sqlResources, cancellationToken).ConfigureAwait(false);
             DataFlowRepairSummary summary = new();
+
             foreach (TransactionLinkEditModel model in FinancialLinkRules.FindAutomaticLinks(state.Transactions, state.Links, state.Rejections))
             {
                 await using SqlCommand command = connection.CreateCommand();
@@ -648,10 +646,21 @@ namespace PersonalFinanceManager.Data.Services
                 command.Parameters.Add(SqlParameters.Int("@ConfidenceScore", model.ConfidenceScore));
                 command.Parameters.Add(SqlParameters.NVarChar("@Notes", model.Notes, 2000));
                 await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-                if (model.LinkType == TransactionLinkTypes.PurchaseMirror) summary.LinkedFundingRows++;
-                else if (model.LinkType == TransactionLinkTypes.CreditCardPaymentFunding) summary.CreditCardFundingLinks++;
-                else if (model.LinkType == TransactionLinkTypes.BankTransfer) summary.BankTransferLinks++;
+
+                if (model.LinkType == TransactionLinkTypes.PurchaseMirror)
+                {
+                    summary.LinkedFundingRows++;
+                }
+                else if (model.LinkType == TransactionLinkTypes.CreditCardPaymentFunding)
+                {
+                    summary.CreditCardFundingLinks++;
+                }
+                else if (model.LinkType == TransactionLinkTypes.BankTransfer)
+                {
+                    summary.BankTransferLinks++;
+                }
             }
+
             return summary;
         }
 
@@ -659,9 +668,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/CountPotentialDuplicateGroups.sql");
-
             object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return Convert.ToInt32(value);
         }
@@ -675,9 +682,7 @@ namespace PersonalFinanceManager.Data.Services
             bool bankTransfer = IsParsedTransfer(parsed);
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/UpdateImportedTransactionRule.sql");
-
             command.Parameters.Add(SqlParameters.Int("@AppliedRuleId", rule?.RuleId));
             command.Parameters.Add(SqlParameters.NVarChar("@Category", rule?.Category ?? GetDefaultCategory(parsed, buyerCreditPayment, creditCardPayment, creditCardReturn, bankTransfer), 200));
             command.Parameters.Add(SqlParameters.NVarChar("@SpendingClass", rule?.SpendingClass ?? GetDefaultCategoryType(parsed, buyerCreditPayment, creditCardPayment, creditCardReturn, creditCardFee, bankTransfer), 100));
@@ -693,9 +698,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("ImportService/UpdateBatchCounts.sql");
-
             command.Parameters.Add(SqlParameters.Int("@TotalRowCount", summary.ParsedRows + summary.ErrorRows));
             command.Parameters.Add(SqlParameters.Int("@ImportedRowCount", summary.InsertedRows));
             command.Parameters.Add(SqlParameters.Int("@DuplicateRowCount", summary.DuplicateRows));

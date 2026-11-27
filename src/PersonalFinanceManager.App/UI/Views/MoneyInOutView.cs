@@ -374,11 +374,13 @@ namespace PersonalFinanceManager.App.UI.Views
         private async Task RefreshAsync()
         {
             ExpenseReportFilter filter = BuildFilter();
+
             if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
             {
                 MessageBox.Show(this, "The start date must be on or before the end date.", "Cash Flow", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
             CashFlowReportResult report = await _analysisService.GetCashFlowReportAsync(filter).ConfigureAwait(true);
             MoneyInOutSummary summary = report.Summary;
             IReadOnlyList<MoneyInOutMonthlyItem> monthly = report.Monthly;
@@ -393,12 +395,18 @@ namespace PersonalFinanceManager.App.UI.Views
             decimal averageNet = report.Period.MonthEquivalent > 0M ? summary.NetCashFlow / report.Period.MonthEquivalent : 0M;
             _averageNetMetric.Text = report.Period.HasObservedTransactions ? averageNet.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
             _averageNetMetric.ForeColor = averageNet >= 0M ? UiTheme.Success : Color.FromArgb(220, 38, 38);
+
             _periodLabel.Text = report.Period.HasObservedTransactions
                 ? $"{report.Period.FromDate:MMM d, yyyy} - {report.Period.ToDate:MMM d, yyyy} | {report.Period.MonthCount} calendar months | Import coverage unverified"
                 : report.Period.CoverageNote;
+
             _reviewNotes.Lines = report.Warnings.Append(report.Period.CoverageNote).ToArray();
             _periodLabel.ForeColor = report.Warnings.Count > 0 ? Color.DarkOrange : UiTheme.TextSecondary;
-            if (report.Warnings.Count > 0) _periodLabel.Text = "Transaction relationships require review; totals include unresolved entries. See Review notes.";
+
+            if (report.Warnings.Count > 0)
+            {
+                _periodLabel.Text = "Transaction relationships require review; totals include unresolved entries. See Review notes.";
+            }
         }
 
         private ExpenseReportFilter BuildFilter()
@@ -412,15 +420,6 @@ namespace PersonalFinanceManager.App.UI.Views
                 ToDate = _toDate.Checked ? DateOnly.FromDateTime(_toDate.Value.Date) : null,
                 MaxDetailRows = decimal.ToInt32(_maxRows.Value)
             };
-        }
-
-        private static string BuildPeriodText(MoneyInOutSummary summary, int monthCount, int detailCount)
-        {
-            string period = summary.FirstTransactionDate.HasValue && summary.LastTransactionDate.HasValue
-                ? summary.FirstTransactionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) + " - " + summary.LastTransactionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)
-                : "No activity";
-
-            return $"{period}     Months: {monthCount}     Rows: {detailCount}";
         }
 
         private static void AddFilterLabel(FlowLayoutPanel filters, string text)

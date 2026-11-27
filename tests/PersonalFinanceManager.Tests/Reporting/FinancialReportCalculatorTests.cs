@@ -11,11 +11,15 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void RefundsReduceNetExpensesAndIgnoredRowsNeverReachAnyReport()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
-        [
-            Row(1, -100M), Row(2, 40M), Row(3, -900M, category: "Ignore"),
-            Row(4, 800M, category: "Ignore", income: true, owner: OwnerValues.Spouse)
-        ] });
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
+            [
+                Row(1, -100M), Row(2, 40M), Row(3, -900M, category: "Ignore"),
+                Row(4, 800M, category: "Ignore", income: true, owner: OwnerValues.Spouse)
+            ]
+        });
+
         ExpenseReportResult expense = calculator.Expenses(new());
         Assert.AreEqual(60M, expense.Metrics.TotalExpenses);
         Assert.AreEqual(60M, expense.Summary.Single().TotalAmount);
@@ -53,8 +57,12 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void PayrollReversalReducesPostedNetIncome()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
-            [Row(1, 1000M, income: true, owner: OwnerValues.Spouse), Row(2, -200M, income: true, owner: OwnerValues.Spouse)] });
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
+            [Row(1, 1000M, income: true, owner: OwnerValues.Spouse), Row(2, -200M, income: true, owner: OwnerValues.Spouse)]
+        });
+
         Assert.AreEqual(800M, calculator.Income(new()).Single().MonthlyAverageNetIncome);
         Assert.AreEqual(0M, calculator.Expenses(new()).Metrics.TotalExpenses);
     }
@@ -69,6 +77,7 @@ public sealed class FinancialReportCalculatorTests
                 Row(3, 500M, date: new DateOnly(2026, 2, 15), account: 2, accountType: "Credit Card", transfer: true)],
             Links = [Link(3, 2, "CreditCardPaymentFunding")]
         });
+
         ExpenseReportFilter january = new() { FromDate = new DateOnly(2026, 1, 1), ToDate = new DateOnly(2026, 1, 31) };
         ExpenseReportFilter february = new() { FromDate = new DateOnly(2026, 2, 1), ToDate = new DateOnly(2026, 2, 28) };
         Assert.AreEqual(500M, calculator.Expenses(january).Metrics.TotalExpenses);
@@ -90,9 +99,13 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void PurchaseMirrorsNeverCreateASecondExpenseOrWalletCashMovement()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
             [Row(1, -100M, account: 3, accountType: "PayPal"), Row(2, -100M, account: 2, accountType: "Credit Card")],
-            Links = [Link(1, 2, "PurchaseMirror")] });
+            Links = [Link(1, 2, "PurchaseMirror")]
+        });
+
         Assert.AreEqual(100M, calculator.Expenses(new()).Metrics.TotalExpenses);
         Assert.AreEqual(0M, calculator.CashFlow(new()).Summary.TotalMoneyOut);
     }
@@ -100,9 +113,13 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void PartialFundingAllocationRemovesOnlyItsAllocatedPortion()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
             [Row(1, -20M, account: 3, accountType: "PayPal"), Row(2, -30M, account: 3, accountType: "PayPal"), Row(3, -100M)],
-            Links = [Link(1, 3, "PurchaseFundingAllocation", 20M), Link(2, 3, "PurchaseFundingAllocation", 30M)] });
+            Links = [Link(1, 3, "PurchaseFundingAllocation", 20M), Link(2, 3, "PurchaseFundingAllocation", 30M)]
+        });
+
         ExpenseReportResult expenses = calculator.Expenses(new());
         Assert.AreEqual(100M, expenses.Metrics.TotalExpenses);
         Assert.AreEqual(50M, expenses.Details.Single(row => row.ImportedTransactionId == 3).Amount);
@@ -112,9 +129,13 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void PartlyFundedWalletPurchasePreservesCashPaidFromTheWalletBalance()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
             [Row(1, -100M, account: 3, accountType: "PayPal"), Row(2, -40M)],
-            Links = [Link(1, 2, "PurchaseFundingAllocation", 40M)] });
+            Links = [Link(1, 2, "PurchaseFundingAllocation", 40M)]
+        });
+
         CashFlowReportResult cash = calculator.CashFlow(new());
         Assert.AreEqual(100M, cash.Summary.TotalMoneyOut);
         Assert.AreEqual(-60M, cash.Details.Single(row => row.ImportedTransactionId == 1).Amount);
@@ -124,9 +145,13 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void ExplicitRefundLinkUsesPurchaseCategoryWithoutReducingPurchaseTwice()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
             [Row(1, -100M, category: "Shopping"), Row(2, 40M, category: "Refund")],
-            Links = [Link(2, 1, "PurchaseRefund", 40M)] });
+            Links = [Link(2, 1, "PurchaseRefund", 40M)]
+        });
+
         ExpenseReportResult report = calculator.Expenses(new());
         Assert.AreEqual(60M, report.Metrics.TotalExpenses);
         Assert.HasCount(1, report.Summary);
@@ -138,25 +163,171 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void RemovingALegacyLinkRevealsItsPreviouslyGeneratedTransferFlag()
     {
-        ReportTransaction legacy = new() { Id = 1, AccountId = 1, Date = January, Amount = -100M,
-            AccountType = "Checking", IsTransfer = true, LegacyLinkTreatment = true, Category = "Utilities" };
+        ReportTransaction legacy = new()
+        {
+            Id = 1,
+            AccountId = 1,
+            Date = January,
+            Amount = -100M,
+            AccountType = "Checking",
+            IsTransfer = true,
+            LegacyLinkTreatment = true,
+            Category = "Utilities"
+        };
+
         FinancialReportCalculator calculator = new(new ReportData { Transactions = [legacy] });
         Assert.AreEqual(100M, calculator.Expenses(new()).Metrics.TotalExpenses);
-        ReportTransaction manual = new() { Id = 1, AccountId = 1, Date = January, Amount = -100M,
-            AccountType = "Checking", IsTransfer = true, LegacyLinkTreatment = true, ClassificationIsManual = true };
+
+        ReportTransaction manual = new()
+        {
+            Id = 1,
+            AccountId = 1,
+            Date = January,
+            Amount = -100M,
+            AccountType = "Checking",
+            IsTransfer = true,
+            LegacyLinkTreatment = true,
+            ClassificationIsManual = true
+        };
+
         Assert.AreEqual(0M, new FinancialReportCalculator(new ReportData { Transactions = [manual] }).Expenses(new()).Metrics.TotalExpenses);
     }
 
     [TestMethod]
     public void RequiredBillReplacesMatchedHistoryWhileOtherBucketSpendingRemains()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
-            [Row(1, -200M, description: "Electric Utility"), Row(2, -100M, description: "Gas Utility")], Bills = [Bill(200M)] });
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
+            [Row(1, -200M, description: "Electric Utility"), Row(2, -100M, description: "Gas Utility")],
+            Bills = [Bill(200M)]
+        });
+
         SalarySpendingAnalysis result = calculator.SalarySpending(Combined());
         Assert.IsTrue(result.CanEstimate);
         Assert.AreEqual(100M, result.TransactionMonthlySpending);
         Assert.AreEqual(200M, result.RequiredBillsMonthlySpending);
         Assert.AreEqual(300M, result.TargetMonthlySpending);
+    }
+
+    [TestMethod]
+    public void RequiredBillCannotReplaceOtherSpendingBucketsAtTheSameMerchant()
+    {
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
+            [
+                new ReportTransaction
+                {
+                    Id = 1,
+                    AccountId = 1,
+                    AccountType = "Checking",
+                    Date = January,
+                    Amount = -200M,
+                    Description = "Example store order",
+                    Merchant = "Example store",
+                    Category = "Groceries",
+                    SpendingClass = "Food"
+                },
+                new ReportTransaction
+                {
+                    Id = 2,
+                    AccountId = 1,
+                    AccountType = "Checking",
+                    Date = January,
+                    Amount = -15M,
+                    Description = "Example membership",
+                    Merchant = "Example store",
+                    Category = "Subscriptions",
+                    SpendingClass = "Services" }
+            ],
+            Bills =
+            [
+                new RecurringBill
+                {
+                    BillName = "Membership",
+                    Payee = "Example store",
+                    TypicalAmount = 15M,
+                    AccountId = 1,
+                    Category = "Subscriptions",
+                    SpendingClass = "Services"
+                }
+            ]
+        });
+
+        SalarySpendingAnalysis result = calculator.SalarySpending(new()
+        {
+            SpendingMode = SalarySpendingMode.RequiredBillsPlusSelectedCategories,
+            SelectedSpendingBuckets =
+            [
+                new SalarySpendingScopeOption { Category = "Groceries", SpendingClass = "Food" },
+                new SalarySpendingScopeOption { Category = "Subscriptions", SpendingClass = "Services" }
+            ]
+        });
+
+        Assert.IsTrue(result.CanEstimate);
+        Assert.AreEqual(200M, result.TransactionMonthlySpending);
+        Assert.AreEqual(15M, result.RequiredBillsMonthlySpending);
+        Assert.AreEqual(215M, result.TargetMonthlySpending);
+    }
+
+    [TestMethod]
+    public void ExplicitBillSourceCannotReplaceAnotherSubscriptionAtTheSameMerchant()
+    {
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
+            [
+                new ReportTransaction
+                {
+                    Id = 1,
+                    AccountId = 1,
+                    AccountType = "Checking",
+                    Date = January,
+                    Amount = -15M,
+                    Description = "Membership A",
+                    Merchant = "Example store",
+                    Category = "Subscriptions",
+                    SpendingClass = "Services"
+                },
+                new ReportTransaction
+                {
+                    Id = 2,
+                    AccountId = 1,
+                    AccountType = "Checking",
+                    Date = January,
+                    Amount = -20M,
+                    Description = "Subscription B",
+                    Merchant = "Example store",
+                    Category = "Subscriptions",
+                    SpendingClass = "Services"
+                }
+            ],
+            Bills =
+            [
+                new RecurringBill
+                {
+                    BillName = "Membership",
+                    Payee = "Example store",
+                    SourceDescription = "Membership A",
+                    TypicalAmount = 15M,
+                    AccountId = 1,
+                    Category = "Subscriptions",
+                    SpendingClass = "Services"
+                }
+            ]
+        });
+
+        SalarySpendingAnalysis result = calculator.SalarySpending(new()
+        {
+            SpendingMode = SalarySpendingMode.RequiredBillsPlusSelectedCategories,
+            SelectedSpendingBuckets = [new SalarySpendingScopeOption { Category = "Subscriptions", SpendingClass = "Services" }]
+        });
+
+        Assert.IsTrue(result.CanEstimate);
+        Assert.AreEqual(20M, result.TransactionMonthlySpending);
+        Assert.AreEqual(15M, result.RequiredBillsMonthlySpending);
+        Assert.AreEqual(35M, result.TargetMonthlySpending);
     }
 
     [TestMethod]
@@ -198,8 +369,13 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void InvalidHistoricalMirrorCannotHideTheBankDebit()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
-            [Row(1, -60M, account: 3, accountType: "PayPal"), Row(2, -100M)], Links = [Link(1, 2, "PayPalFunding")] });
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
+            [Row(1, -60M, account: 3, accountType: "PayPal"), Row(2, -100M)],
+            Links = [Link(1, 2, "PayPalFunding")]
+        });
+
         ExpenseReportResult expense = calculator.Expenses(new());
         Assert.AreEqual(160M, expense.Metrics.TotalExpenses);
         Assert.HasCount(2, expense.Details);
@@ -211,9 +387,13 @@ public sealed class FinancialReportCalculatorTests
     [TestMethod]
     public void OverallocatedStoredGroupsAreAllExcludedFromFinancialTreatment()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
             [Row(1, -100M, account: 3, accountType: "PayPal"), Row(2, -80M), Row(3, -80M)],
-            Links = [Link(1, 2, "PurchaseFundingAllocation", 80M), Link(1, 3, "PurchaseFundingAllocation", 80M)] });
+            Links = [Link(1, 2, "PurchaseFundingAllocation", 80M), Link(1, 3, "PurchaseFundingAllocation", 80M)]
+        });
+
         Assert.AreEqual(260M, calculator.Expenses(new()).Metrics.TotalExpenses);
         Assert.IsTrue(calculator.NeedsLinkReview(1));
         Assert.IsTrue(calculator.NeedsLinkReview(2));
@@ -226,23 +406,69 @@ public sealed class FinancialReportCalculatorTests
     {
         TransactionLinkRecord link = Link(1, 2, "ManualReview");
         link.Notes = "Review required after upgrade: historical automatic match.";
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
-            [Row(1, -100M, account: 3, accountType: "PayPal"), Row(2, -100M)], Links = [link] });
+
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions =
+            [Row(1, -100M, account: 3, accountType: "PayPal"), Row(2, -100M)],
+            Links = [link]
+        });
+
         Assert.AreEqual(200M, calculator.Expenses(new()).Metrics.TotalExpenses);
         Assert.HasCount(1, calculator.Expenses(new()).Warnings);
         Assert.IsFalse(calculator.SalarySpending(new()).CanEstimate);
     }
 
-    private static SalarySpendingFilter Combined() => new() { SpendingMode = SalarySpendingMode.RequiredBillsPlusSelectedCategories,
-        SelectedSpendingBuckets = [new SalarySpendingScopeOption { Category = "Utilities", SpendingClass = "Household" }] };
-    private static RecurringBill Bill(decimal amount) => new() { BillName = "Electric bill", Payee = "Electric Utility", Category = "Utilities",
-        SpendingClass = "Household", TypicalAmount = amount, AccountId = 1 };
-    private static ReportTransaction Row(long id, decimal amount, int account = 1, string accountType = "Checking", DateOnly? date = null,
-        string category = "Utilities", string description = "Electric Utility", bool income = false, bool transfer = false, string? owner = null) => new()
+    private static SalarySpendingFilter Combined()
     {
-        Id = id, AccountId = account, AccountType = accountType, AccountNickname = accountType, Date = date ?? January,
-        Amount = amount, Category = category, SpendingClass = "Household", Description = description, IsIncome = income, IsTransfer = transfer, IncomeOwner = owner
-    };
-    private static TransactionLinkRecord Link(long source, long linked, string type, decimal? amount = null) => new()
-        { SourceTransactionId = source, LinkedTransactionId = linked, LinkType = type, AllocationAmount = amount };
+        return new()
+        {
+            SpendingMode = SalarySpendingMode.RequiredBillsPlusSelectedCategories,
+            SelectedSpendingBuckets = [new SalarySpendingScopeOption { Category = "Utilities", SpendingClass = "Household" }]
+        };
+    }
+
+    private static RecurringBill Bill(decimal amount)
+    {
+        return new()
+        {
+            BillName = "Electric bill",
+            Payee = "Electric Utility",
+            Category = "Utilities",
+            SpendingClass = "Household",
+            TypicalAmount = amount,
+            AccountId = 1
+        };
+    }
+
+    private static ReportTransaction Row(long id, decimal amount, int account = 1, string accountType = "Checking", DateOnly? date = null,
+        string category = "Utilities", string description = "Electric Utility", bool income = false, bool transfer = false, string? owner = null)
+    {
+        return new()
+        {
+            Id = id,
+            AccountId = account,
+            AccountType = accountType,
+            AccountNickname = accountType,
+            Date = date ?? January,
+            Amount = amount,
+            Category = category,
+            SpendingClass = "Household",
+            Description = description,
+            IsIncome = income,
+            IsTransfer = transfer,
+            IncomeOwner = owner
+        };
+    }
+
+    private static TransactionLinkRecord Link(long source, long linked, string type, decimal? amount = null)
+    {
+        return new()
+        {
+            SourceTransactionId = source,
+            LinkedTransactionId = linked,
+            LinkType = type,
+            AllocationAmount = amount
+        };
+    }
 }

@@ -59,8 +59,7 @@ public sealed class FinancialLinkRulesTests
         Assert.IsEmpty(FinancialLinkRules.FindAutomaticLinks([wallet with { Description = "PAYMENT" }, bank with { Description = "PAYMENT" }], [], []));
         Assert.HasCount(1, FinancialLinkRules.FindAutomaticLinks([wallet, bank with { Description = "PAYPAL MERCHANT ALPHA" }], [], []));
         Assert.HasCount(1, FinancialLinkRules.FindAutomaticLinks([wallet, bank with { Description = "MERCHANT ALPHA" }], [], []));
-        Assert.HasCount(1, FinancialLinkRules.FindAutomaticLinks([wallet with { ExternalTransactionId = "PROVIDER-TX123" },
-            bank with { ExternalTransactionId = "PROVIDER-TX123" }], [], []));
+        Assert.HasCount(1, FinancialLinkRules.FindAutomaticLinks([wallet with { ExternalTransactionId = "PROVIDER-TX123" }, bank with { ExternalTransactionId = "PROVIDER-TX123" }], [], []));
     }
 
     [TestMethod]
@@ -78,8 +77,7 @@ public sealed class FinancialLinkRulesTests
         var second = first with { Id = 2, Amount = -60m, Date = new DateOnly(2026, 8, 7) };
         var debit = Tx(3, 2, "Checking", -100m, "Withdrawal", "PAYPAL COMBINED DEBIT", "1234") with { Date = new DateOnly(2026, 8, 15) };
         FinancialLinkRules.Validate(Link(1, 3, TransactionLinkTypes.PurchaseFundingAllocation, 40m), first, debit, []);
-        FinancialLinkRules.Validate(Link(2, 3, TransactionLinkTypes.PurchaseFundingAllocation, 60m), second, debit,
-            [new FinancialLink(1, 1, 3, TransactionLinkTypes.PurchaseFundingAllocation, 40m)]);
+        FinancialLinkRules.Validate(Link(2, 3, TransactionLinkTypes.PurchaseFundingAllocation, 60m), second, debit, [new FinancialLink(1, 1, 3, TransactionLinkTypes.PurchaseFundingAllocation, 40m)]);
     }
 
     [TestMethod]
@@ -130,8 +128,7 @@ public sealed class FinancialLinkRulesTests
         var refund = purchase with { Id = 3, Amount = 20m, Type = "Refund" };
         var paid = new FinancialLink(1, 2, 1, TransactionLinkTypes.CreditCardPaymentAllocation, 100m);
         FinancialLinkRules.Validate(Link(3, 1, TransactionLinkTypes.PurchaseRefund, 20m), refund, purchase, [paid]);
-        FinancialLinkRules.Validate(Link(2, 1, TransactionLinkTypes.CreditCardPaymentAllocation, 100m), payment, purchase,
-            [new FinancialLink(2, 3, 1, TransactionLinkTypes.PurchaseRefund, 20m)]);
+        FinancialLinkRules.Validate(Link(2, 1, TransactionLinkTypes.CreditCardPaymentAllocation, 100m), payment, purchase, [new FinancialLink(2, 3, 1, TransactionLinkTypes.PurchaseRefund, 20m)]);
         Assert.AreEqual(80m, -(purchase.Amount + refund.Amount));
         Assert.AreEqual(20m, purchase.Amount + payment.Amount + refund.Amount);
     }
@@ -141,8 +138,7 @@ public sealed class FinancialLinkRulesTests
     {
         var payment = Tx(1, 1, "Credit Card", 100m, "Payment", "PAYMENT", "1234");
         var purchase = payment with { Id = 2, Amount = -100m, Type = "Purchase" };
-        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(Link(1, 2, TransactionLinkTypes.CreditCardPaymentAllocation, 50m),
-            payment, purchase, [new(1, 1, 3, TransactionLinkTypes.CreditCardPaymentAllocation, 75m)]));
+        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(Link(1, 2, TransactionLinkTypes.CreditCardPaymentAllocation, 50m), payment, purchase, [new(1, 1, 3, TransactionLinkTypes.CreditCardPaymentAllocation, 75m)]));
     }
 
     [TestMethod]
@@ -207,24 +203,37 @@ public sealed class FinancialLinkRulesTests
         {
             TransactionLinkEditModel[] proposed = mirrorFirst ? [mirror, funding] : [funding, mirror];
             List<FinancialLink> saved = [];
+
             foreach (TransactionLinkEditModel link in proposed)
             {
                 FinancialLinkRules.Validate(link, byId[link.SourceTransactionId], byId[link.LinkedTransactionId], saved, byId);
                 saved.Add(new(saved.Count + 1, link.SourceTransactionId, link.LinkedTransactionId, link.LinkType, null));
             }
+
             var calculator = new FinancialReportCalculator(new ReportData
             {
                 Transactions = transactions.Select(t => new ReportTransaction
                 {
-                    Id = t.Id, AccountId = t.AccountId, AccountType = t.AccountType, AccountNickname = t.AccountNickname,
-                    Date = t.Date, Amount = t.Amount, Type = t.Type, Description = t.Description, IsTransfer = t.IsTransfer
+                    Id = t.Id,
+                    AccountId = t.AccountId,
+                    AccountType = t.AccountType,
+                    AccountNickname = t.AccountNickname,
+                    Date = t.Date,
+                    Amount = t.Amount,
+                    Type = t.Type,
+                    Description = t.Description,
+                    IsTransfer = t.IsTransfer
                 }).ToArray(),
                 Links = saved.Select(l => new TransactionLinkRecord
                 {
-                    TransactionLinkId = l.Id, SourceTransactionId = l.SourceId, LinkedTransactionId = l.LinkedId,
-                    LinkType = l.Type, ConfidenceScore = 100
+                    TransactionLinkId = l.Id,
+                    SourceTransactionId = l.SourceId,
+                    LinkedTransactionId = l.LinkedId,
+                    LinkType = l.Type,
+                    ConfidenceScore = 100
                 }).ToArray()
             });
+
             ExpenseReportResult expenses = calculator.Expenses(new ExpenseReportFilter());
             CashFlowReportResult cash = calculator.CashFlow(new ExpenseReportFilter());
             Assert.AreEqual(0m, expenses.Metrics.TotalExpenses);
@@ -240,8 +249,7 @@ public sealed class FinancialLinkRulesTests
     {
         foreach (bool walletFirst in new[] { true, false })
         {
-            var wallet = Tx(walletFirst ? 1 : 3, 1, "PayPal Wallet", -500m, "Buyer Credit Payment", "CREDIT REPAYMENT", "3333")
-                with { IsTransfer = true, FundingSource = "Checking ending 1234" };
+            var wallet = Tx(walletFirst ? 1 : 3, 1, "PayPal Wallet", -500m, "Buyer Credit Payment", "CREDIT REPAYMENT", "3333") with { IsTransfer = true, FundingSource = "Checking ending 1234" };
             var bank = Tx(2, 2, "Checking", -500m, "Withdrawal", "SMART CONNECT 9876", "1234");
             var card = Tx(walletFirst ? 3 : 1, 3, "PayPal Smart Connect", 500m, "Payment", "PAYMENT RECEIVED", "9876");
             var links = FinancialLinkRules.FindAutomaticLinks([wallet, bank, card], [], []);
@@ -263,25 +271,23 @@ public sealed class FinancialLinkRulesTests
         var byId = new[] { wallet, bank, card, secondCard, secondWallet }.ToDictionary(t => t.Id);
         FinancialLink mirror = new(1, wallet.Id, bank.Id, TransactionLinkTypes.PurchaseMirror, null);
         FinancialLink funding = new(2, card.Id, bank.Id, TransactionLinkTypes.CreditCardPaymentFunding, null);
-
-        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(
-            Link(wallet.Id, bank.Id, TransactionLinkTypes.PurchaseMirror), wallet with { Type = "Purchase", IsTransfer = false }, bank, [funding], byId));
-        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(
-            Link(wallet.Id, bank.Id, TransactionLinkTypes.PurchaseMirror), wallet with { IsTransfer = false }, bank, [funding], byId));
+        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(Link(wallet.Id, bank.Id, TransactionLinkTypes.PurchaseMirror), wallet with { Type = "Purchase", IsTransfer = false }, bank, [funding], byId));
+        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(Link(wallet.Id, bank.Id, TransactionLinkTypes.PurchaseMirror), wallet with { IsTransfer = false }, bank, [funding], byId));
         var purchaseById = byId.ToDictionary(entry => entry.Key, entry => entry.Value);
         purchaseById[wallet.Id] = wallet with { Type = "Purchase", IsTransfer = false };
-        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(
-            Link(card.Id, bank.Id, TransactionLinkTypes.CreditCardPaymentFunding), card, bank, [mirror], purchaseById));
-        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(
-            Link(secondCard.Id, bank.Id, TransactionLinkTypes.CreditCardPaymentFunding), secondCard, bank, [mirror, funding], byId));
-        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(
-            Link(secondWallet.Id, bank.Id, TransactionLinkTypes.PurchaseMirror), secondWallet, bank, [mirror, funding], byId));
-        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(
-            Link(wallet.Id, bank.Id, TransactionLinkTypes.PurchaseFundingAllocation, 500m), wallet, bank, [funding], byId));
+        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(Link(card.Id, bank.Id, TransactionLinkTypes.CreditCardPaymentFunding), card, bank, [mirror], purchaseById));
+        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(Link(secondCard.Id, bank.Id, TransactionLinkTypes.CreditCardPaymentFunding), secondCard, bank, [mirror, funding], byId));
+        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(Link(secondWallet.Id, bank.Id, TransactionLinkTypes.PurchaseMirror), secondWallet, bank, [mirror, funding], byId));
+        Assert.ThrowsExactly<InvalidOperationException>(() => FinancialLinkRules.Validate(Link(wallet.Id, bank.Id, TransactionLinkTypes.PurchaseFundingAllocation, 500m), wallet, bank, [funding], byId));
     }
 
     private static FinancialLinkTransaction Tx(long id, int account, string accountType, decimal amount, string type, string description, string? lastFour)
-        => new(id, account, accountType, accountType, "Example Institution", lastFour, new DateOnly(2026, 8, 1), amount, type, description, null, null, null, false);
+    {
+        return new(id, account, accountType, accountType, "Example Institution", lastFour, new DateOnly(2026, 8, 1), amount, type, description, null, null, null, false);
+    }
+
     private static TransactionLinkEditModel Link(long source, long linked, string type, decimal? allocation = null)
-        => new() { SourceTransactionId = source, LinkedTransactionId = linked, LinkType = type, AllocationAmount = allocation };
+    {
+        return new() { SourceTransactionId = source, LinkedTransactionId = linked, LinkType = type, AllocationAmount = allocation };
+    }
 }

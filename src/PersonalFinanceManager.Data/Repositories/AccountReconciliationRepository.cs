@@ -19,6 +19,7 @@ namespace PersonalFinanceManager.Data.Repositories
         public async Task<AccountReconciliation> CheckAsync(AccountReconciliationRequest request, bool record, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(request);
+
             if (request.FromDate > request.ToDate || request.AccountId <= 0)
             {
                 throw new ArgumentException("Select an account and a valid statement date range.");
@@ -28,12 +29,14 @@ namespace PersonalFinanceManager.Data.Repositories
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
             string accountType;
+
             await using (SqlCommand account = connection.CreateCommand())
             {
                 account.Transaction = transaction;
                 account.CommandText = _sql.Read("Accounts/GetAccountById.sql");
                 account.Parameters.Add(SqlParameters.Int("@AccountId", request.AccountId));
                 await using SqlDataReader reader = await account.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
                 if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     throw new InvalidOperationException("The selected account no longer exists.");
@@ -44,6 +47,7 @@ namespace PersonalFinanceManager.Data.Repositories
 
             List<ImportedTransaction> activity = new();
             bool hasWalletPurchaseActivity = false;
+
             await using (SqlCommand select = connection.CreateCommand())
             {
                 select.Transaction = transaction;
@@ -52,9 +56,11 @@ namespace PersonalFinanceManager.Data.Repositories
                 select.Parameters.Add(SqlParameters.Date("@FromDate", request.FromDate));
                 select.Parameters.Add(SqlParameters.Date("@ToDate", request.ToDate));
                 await using SqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
                 while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
                 {
                     hasWalletPurchaseActivity |= string.Equals(reader.GetStringOrNull("ImportProfileCode"), ImportProfileCodes.PayPalStatement, StringComparison.OrdinalIgnoreCase);
+
                     activity.Add(new ImportedTransaction
                     {
                         ImportedTransactionId = reader.GetInt64Value("ImportedTransactionId"),
@@ -72,6 +78,7 @@ namespace PersonalFinanceManager.Data.Repositories
             }
 
             AccountReconciliation result = AccountReconciliationCalculator.Calculate(request, accountType, activity);
+
             if (record)
             {
                 await using SqlCommand insert = connection.CreateCommand();
@@ -104,6 +111,7 @@ namespace PersonalFinanceManager.Data.Repositories
             command.Parameters.Add(SqlParameters.Int("@AccountId", accountId));
             List<AccountReconciliation> results = new();
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
             {
                 results.Add(new AccountReconciliation

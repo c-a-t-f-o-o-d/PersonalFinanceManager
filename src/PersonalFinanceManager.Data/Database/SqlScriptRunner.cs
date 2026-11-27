@@ -24,7 +24,6 @@ namespace PersonalFinanceManager.Data.Database
         public IReadOnlyList<string> SplitBatches(string script)
         {
             ArgumentNullException.ThrowIfNull(script);
-
             string[] lines = script.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n');
             List<string> batches = new();
             StringBuilder current = new();

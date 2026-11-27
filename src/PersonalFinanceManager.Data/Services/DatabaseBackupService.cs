@@ -25,9 +25,7 @@ namespace PersonalFinanceManager.Data.Services
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("BackupExport/GetHistory.sql");
-
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -61,9 +59,7 @@ namespace PersonalFinanceManager.Data.Services
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using SqlCommand command = connection.CreateCommand();
                 command.CommandTimeout = 0;
-
                 command.CommandText = _sqlResources.Read("BackupExport/CreateSqlBackup.sql");
-
                 command.Parameters.Add(SqlParameters.NVarChar("@FilePath", backupPath, 1000));
                 command.Parameters.Add(SqlParameters.NVarChar("@DatabaseName", _connectionFactory.DatabaseName, 128));
                 await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -106,18 +102,13 @@ namespace PersonalFinanceManager.Data.Services
                 await using SqlConnection connection = _connectionFactory.CreateConnection();
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
-
                 await WriteQueryToCsvAsync(archive, connection, transaction, "accounts.csv", _sqlResources.Read("BackupExport/ExportAccounts.sql"), cancellationToken).ConfigureAwait(false);
-
                 await WriteQueryToCsvAsync(archive, connection, transaction, "rules.csv", _sqlResources.Read("BackupExport/ExportRules.sql"), cancellationToken).ConfigureAwait(false);
-
                 await WriteQueryToCsvAsync(archive, connection, transaction, "transactions.csv", _sqlResources.Read("BackupExport/ExportTransactions.sql"), cancellationToken).ConfigureAwait(false);
-
                 await WriteQueryToCsvAsync(archive, connection, transaction, "recurring_bills.csv", _sqlResources.Read("BackupExport/ExportRecurringBills.sql"), cancellationToken).ConfigureAwait(false);
                 await WriteQueryToCsvAsync(archive, connection, transaction, "transaction_links.csv", _sqlResources.Read("BackupExport/ExportTransactionLinks.sql"), cancellationToken).ConfigureAwait(false);
                 await WriteQueryToCsvAsync(archive, connection, transaction, "statement_checks.csv", _sqlResources.Read("BackupExport/ExportReconciliations.sql"), cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-
                 succeeded = true;
                 message = "Portable CSV export created. SQL backup is still recommended for full-fidelity restore.";
             }
@@ -144,9 +135,7 @@ namespace PersonalFinanceManager.Data.Services
                 await using SqlConnection connection = _connectionFactory.CreateConnection();
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 await using SqlCommand command = connection.CreateCommand();
-
                 command.CommandText = _sqlResources.Read("BackupExport/InsertHistory.sql");
-
                 command.Parameters.Add(SqlParameters.NVarChar("@BackupType", backupType, 50));
                 command.Parameters.Add(SqlParameters.NVarChar("@FilePath", filePath, 1000));
                 command.Parameters.Add(SqlParameters.Bit("@Succeeded", succeeded));

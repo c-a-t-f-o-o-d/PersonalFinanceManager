@@ -17,6 +17,7 @@ public class AccountActivityCsvParser : ITransactionParser
     {
         ParseResult result = new();
         IReadOnlyList<CsvRecord> records;
+
         try
         {
             records = _reader.Read(text).Where(record => record.Fields.Any(field => !string.IsNullOrWhiteSpace(field))).ToArray();
@@ -34,9 +35,11 @@ public class AccountActivityCsvParser : ITransactionParser
         }
 
         Dictionary<string, int> headers = new(StringComparer.OrdinalIgnoreCase);
+
         for (int index = 0; index < records[0].Fields.Count; index++)
         {
             string header = records[0].Fields[index].Trim().TrimStart('\uFEFF');
+
             if (!headers.TryAdd(header, index))
             {
                 result.Errors.Add(new ParseError(records[0].PhysicalStartLine, $"The header '{header}' occurs more than once."));
@@ -59,18 +62,20 @@ public class AccountActivityCsvParser : ITransactionParser
 
         ImportOccurrenceIdentity identities = new();
         Dictionary<string, ParsedTransaction> sourceIds = new(StringComparer.OrdinalIgnoreCase);
+
         foreach (CsvRecord record in records.Skip(1))
         {
             ParsedTransaction? transaction = ParseRow(record, headers, out string? error);
+
             if (transaction is null)
             {
                 result.Errors.Add(new ParseError(record.PhysicalStartLine, error ?? "Unable to parse row."));
                 continue;
             }
 
-            if (transaction.ExternalTransactionId is string id && sourceIds.TryGetValue(id, out ParsedTransaction? previous) &&
-                (previous.Date != transaction.Date || previous.Amount != transaction.Amount ||
-                 !string.Equals(previous.Type, transaction.Type, StringComparison.OrdinalIgnoreCase) ||
+            if (transaction.ExternalTransactionId is string id &&
+                sourceIds.TryGetValue(id, out ParsedTransaction? previous) &&
+                (previous.Date != transaction.Date || previous.Amount != transaction.Amount || !string.Equals(previous.Type, transaction.Type, StringComparison.OrdinalIgnoreCase) ||
                  !string.Equals(previous.Description, transaction.Description, StringComparison.OrdinalIgnoreCase)))
             {
                 result.Errors.Add(new ParseError(record.PhysicalStartLine, "The same Transaction ID has conflicting values in this file. Resolve the source conflict before importing this row."));
@@ -94,6 +99,7 @@ public class AccountActivityCsvParser : ITransactionParser
         string amountText = Get("Amount");
         string type = Get("Type");
         string description = Get("Description");
+
         if (!TryParseDate(dateText, out DateOnly date))
         {
             error = "Date must be yyyy-MM-dd or MM/dd/yyyy.";
@@ -113,6 +119,7 @@ public class AccountActivityCsvParser : ITransactionParser
         }
 
         string? currency = Optional("Currency");
+
         if (currency is not null && !currency.Equals("USD", StringComparison.OrdinalIgnoreCase))
         {
             error = "Only USD activity is supported.";
@@ -125,6 +132,7 @@ public class AccountActivityCsvParser : ITransactionParser
         }
 
         DateOnly? postingDate = null;
+
         if (Optional("Posting Date") is string postingText)
         {
             if (!TryParseDate(postingText, out DateOnly parsedDate))
@@ -137,6 +145,7 @@ public class AccountActivityCsvParser : ITransactionParser
         }
 
         TimeOnly? time = null;
+
         if (Optional("Time") is string timeText)
         {
             if (!TimeOnly.TryParseExact(timeText, new[] { "HH:mm:ss", "HH:mm" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out TimeOnly parsedTime))
@@ -149,8 +158,15 @@ public class AccountActivityCsvParser : ITransactionParser
         }
 
         string? externalId = Optional("Transaction ID");
-        if (externalId?.Length > 100 || description.Length > 1000 || type.Length > 100 || Get("Funding Source").Length > 200 || Get("Memo").Length > 1000 ||
-            Get("Category").Length > 200 || Get("Category Type").Length > 100 || Get("Merchant").Length > 200)
+
+        if (externalId?.Length > 100 ||
+            description.Length > 1000 ||
+            type.Length > 100 ||
+            Get("Funding Source").Length > 200 ||
+            Get("Memo").Length > 1000 ||
+            Get("Category").Length > 200 ||
+            Get("Category Type").Length > 100 ||
+            Get("Merchant").Length > 200)
         {
             error = "A transaction ID, description, type, funding source, or memo exceeds the supported field length.";
             return null;
@@ -181,6 +197,7 @@ public class AccountActivityCsvParser : ITransactionParser
         string normalized = type.Trim().ToUpperInvariant();
         bool debit = normalized is "PURCHASE" or "SALE" or "DEBIT" or "WITHDRAWAL" or "FEE" or "INTEREST CHARGE";
         bool credit = normalized is "DEPOSIT" or "REFUND" or "RETURN" or "CREDIT" or "CASHBACK";
+
         if ((debit && amount > 0) || (credit && amount < 0) || (IsCreditAccount && normalized == "PAYMENT" && amount < 0))
         {
             error = "Amount sign conflicts with Type. Normalized activity uses negative charges and positive credits; a credit-account payment is positive.";
@@ -197,7 +214,10 @@ public class AccountActivityCsvParser : ITransactionParser
         return true;
     }
 
-    private static bool TryParseDate(string text, out DateOnly date) => DateOnly.TryParseExact(text, new[] { "yyyy-MM-dd", "MM/dd/yyyy", "M/d/yyyy" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+    private static bool TryParseDate(string text, out DateOnly date)
+    {
+        return DateOnly.TryParseExact(text, new[] { "yyyy-MM-dd", "MM/dd/yyyy", "M/d/yyyy" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
+    }
 }
 
 public class CreditAccountCsvParser : AccountActivityCsvParser

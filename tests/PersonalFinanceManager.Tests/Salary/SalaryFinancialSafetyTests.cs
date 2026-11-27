@@ -9,11 +9,17 @@ public sealed class SalaryFinancialSafetyTests
     public void PostedSpouseNetAndGrossContextMustStillFundTheFullHouseholdTarget()
     {
         SalaryRequirementCalculator calculator = new();
+
         SalaryRequirementInput input = new()
         {
-            TargetMonthlySpending = 6000M, SpouseMonthlyNetIncome = 2000M, SpouseAnnualGrossIncome = 40000M,
-            FilingStatus = FilingStatus.MarriedFilingJointly, UseLegacyAllowanceEstimate = true, SpouseLegacyAllowances = 3
+            TargetMonthlySpending = 6000M,
+            SpouseMonthlyNetIncome = 2000M,
+            SpouseAnnualGrossIncome = 40000M,
+            FilingStatus = FilingStatus.MarriedFilingJointly,
+            UseLegacyAllowanceEstimate = true,
+            SpouseLegacyAllowances = 3
         };
+
         SalaryRequirementResult result = calculator.CalculateRequiredSalary(input);
         Assert.AreEqual(6000M, result.TargetMonthlyTakeHome);
         Assert.IsTrue(result.EstimatedMonthlyTakeHome >= 6000M);
@@ -37,8 +43,15 @@ public sealed class SalaryFinancialSafetyTests
     public void GrossSpouseModeIgnoresThePostedNetInput()
     {
         SalaryRequirementCalculator calculator = new();
-        SalaryRequirementInput input = new() { TargetMonthlySpending = 6000M, SpouseAnnualGrossIncome = 40000M,
-            FilingStatus = FilingStatus.MarriedFilingJointly, SpouseIncomeMode = SpouseIncomeMode.EstimatedFromGross };
+
+        SalaryRequirementInput input = new()
+        {
+            TargetMonthlySpending = 6000M,
+            SpouseAnnualGrossIncome = 40000M,
+            FilingStatus = FilingStatus.MarriedFilingJointly,
+            SpouseIncomeMode = SpouseIncomeMode.EstimatedFromGross
+        };
+
         SalaryRequirementResult original = calculator.CalculateRequiredSalary(input);
         input.SpouseMonthlyNetIncome = 2000M;
         SalaryRequirementResult withPostedNet = calculator.CalculateRequiredSalary(input);
@@ -57,5 +70,33 @@ public sealed class SalaryFinancialSafetyTests
         SalaryRequirementResult result = calculator.CalculateRequiredSalary(input);
         Assert.IsTrue(result.RequiredGrossAnnualSalary > 0M);
         Assert.IsTrue(result.EstimatedMonthlyTakeHome >= 2000M);
+    }
+
+    [TestMethod]
+    public void SeparateTaxHouseholdsCannotApplySpouseAllowancesToEmployeeIncome()
+    {
+        SalaryRequirementCalculator calculator = new();
+
+        foreach (FilingStatus status in new[] { FilingStatus.Single, FilingStatus.HeadOfHousehold })
+        {
+            SalaryRequirementInput input = new()
+            {
+                TargetMonthlySpending = 6000M,
+                SpouseMonthlyNetIncome = 2000M,
+                SpouseAnnualGrossIncome = 40000M,
+                FilingStatus = status,
+                SpouseIncomeMode = SpouseIncomeMode.PostedNet,
+                UseLegacyAllowanceEstimate = true,
+                YourLegacyAllowances = 2
+            };
+
+            SalaryRequirementResult original = calculator.CalculateRequiredSalary(input);
+            decimal originalTakeHome = calculator.CalculateAnnualTakeHome(60000M, input);
+            input.SpouseLegacyAllowances = 3;
+            SalaryRequirementResult withSpouseAllowances = calculator.CalculateRequiredSalary(input);
+            Assert.AreEqual(original.RequiredGrossAnnualSalary, withSpouseAllowances.RequiredGrossAnnualSalary, status.ToString());
+            Assert.AreEqual(originalTakeHome, calculator.CalculateAnnualTakeHome(60000M, input), status.ToString());
+            Assert.AreEqual(2, withSpouseAllowances.TotalLegacyWithholdingAllowances, status.ToString());
+        }
     }
 }

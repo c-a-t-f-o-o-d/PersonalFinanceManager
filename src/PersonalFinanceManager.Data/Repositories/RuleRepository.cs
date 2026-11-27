@@ -21,9 +21,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("Rules/GetRules.sql");
-
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -40,9 +38,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("Rules/GetActiveRules.sql");
-
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -125,7 +121,6 @@ namespace PersonalFinanceManager.Data.Repositories
             }
         }
 
-
         private async Task<int> InsertAsync(FinancialRule rule, CancellationToken cancellationToken)
         {
             await using SqlConnection connection = _connectionFactory.CreateConnection();
@@ -134,7 +129,7 @@ namespace PersonalFinanceManager.Data.Repositories
             command.CommandText = _sqlResources.Read("Rules/InsertRule.sql");
             AddParameters(command, rule);
             object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            return System.Convert.ToInt32(value);
+            return Convert.ToInt32(value);
         }
 
         private async Task UpdateAsync(FinancialRule rule, CancellationToken cancellationToken)
@@ -142,9 +137,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("Rules/UpdateRule.sql");
-
             AddParameters(command, rule);
             command.Parameters.Add(SqlParameters.Int("@RuleId", rule.RuleId));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -157,7 +150,6 @@ namespace PersonalFinanceManager.Data.Repositories
             command.Parameters.Add(SqlParameters.NVarChar("@MatchDescription", rule.MatchDescription, 1000));
             string? normalizedMatchType = RuleTransactionTypeNormalizer.NormalizeRuleType(rule.MatchType);
             string typeMatchMode = RuleTransactionTypeNormalizer.IsNormalizedDirection(normalizedMatchType) ? RuleMatchModes.Exact : rule.TypeMatchMode;
-
             command.Parameters.Add(SqlParameters.NVarChar("@MatchType", normalizedMatchType, 100));
             command.Parameters.Add(SqlParameters.NVarChar("@DescriptionMatchMode", rule.DescriptionMatchMode, 30));
             command.Parameters.Add(SqlParameters.NVarChar("@TypeMatchMode", typeMatchMode, 30));

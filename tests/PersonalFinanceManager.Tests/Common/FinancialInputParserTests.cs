@@ -30,7 +30,10 @@ public sealed class FinancialInputParserTests
     public void MoneyInput_RejectsMalformedGroupingPrecisionAndOverflow()
     {
         foreach (string value in new[] { "1,23", "1,2,3.45", "(-10)", "1.001", "10000000000000000", "1e3" })
+        {
             Assert.Throws<FormatException>(() => FinancialInputParser.OptionalDecimal(value, "Balance"), value);
+        }
+
         Assert.AreEqual(5.12345m, FinancialInputParser.OptionalDecimal("5.12345", "Interest", 5));
         Assert.Throws<FormatException>(() => FinancialInputParser.OptionalDecimal("5.123456", "Interest", 5));
         Assert.Throws<FormatException>(() => FinancialInputParser.OptionalDecimal("10000", "Interest", 5));

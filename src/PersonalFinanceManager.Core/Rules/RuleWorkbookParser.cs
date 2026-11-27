@@ -15,6 +15,7 @@ namespace PersonalFinanceManager.Core.Rules
             try
             {
                 XlsxTable table = XlsxTableReader.ReadFirstWorksheet(path);
+
                 if (table.Rows.Count == 0)
                 {
                     result.Errors.Add("The workbook does not contain any rows.");

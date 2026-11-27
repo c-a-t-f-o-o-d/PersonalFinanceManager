@@ -33,7 +33,6 @@ public sealed class OfxQfxParserTests
             """;
 
         ParseResult result = new OfxQfxParser().ParseText(file);
-
         Assert.IsEmpty(result.Errors);
         Assert.IsEmpty(result.Warnings);
         Assert.HasCount(2, result.Rows);
@@ -64,7 +63,6 @@ public sealed class OfxQfxParserTests
             + Transaction("PAYMENT", "-500.00", "reversed-payment") + Transaction("CREDIT", "15.00", "generic-credit"), true);
 
         ParseResult result = new OfxQfxParser().ParseText(file);
-
         Assert.IsEmpty(result.Errors);
         Assert.HasCount(6, result.Rows);
         CollectionAssert.AreEqual(new[] { "Purchase", "Payment", "Refund", "Interest Charge", "Payment", "Unclassified Credit" }, result.Rows.Select(row => row.Type).ToArray());
@@ -82,7 +80,6 @@ public sealed class OfxQfxParserTests
             + Transaction("ATM", "100", "atm") + Transaction("PAYMENT", "250", "incoming-payment");
 
         ParseResult result = new OfxQfxParser().ParseText(XmlStatement(rows));
-
         Assert.IsEmpty(result.Errors);
         Assert.HasCount(5, result.Rows);
         Assert.HasCount(5, result.Warnings);
@@ -99,7 +96,6 @@ public sealed class OfxQfxParserTests
             + Transaction("XFER", "-75", "transfer");
 
         ParseResult result = new OfxQfxParser().ParseText(XmlStatement(rows));
-
         Assert.IsEmpty(result.Errors);
         Assert.IsEmpty(result.Warnings);
         CollectionAssert.AreEqual(new[] { "Deposit", "Direct Deposit", "Dividend", "Interest Charge", "Interest", "Transfer" }, result.Rows.Select(row => row.Type).ToArray());
@@ -110,23 +106,41 @@ public sealed class OfxQfxParserTests
     public void ExplicitStatementIdentityIsCheckedEvenWhenThereAreNoTransactions()
     {
         ParseResult result = new OfxQfxParser().ParseText(XmlStatement(string.Empty));
-
         Assert.IsEmpty(result.Errors);
         Assert.IsEmpty(result.Rows);
         Assert.AreEqual("000012345678", result.SourceAccountIdentity);
+
         Assert.ThrowsExactly<InvalidOperationException>(() => ImportAccountValidation.Validate(
-            new Account { AccountType = "Checking", AccountNickname = "Different", AccountNumber = "000099995555", AccountNumberLastFour = "5555" }, ImportProfileCodes.OfxQfx, result));
-        ImportAccountValidation.Validate(new Account { AccountType = "Checking", AccountNumber = "000012345678", AccountNumberLastFour = "5678" }, ImportProfileCodes.OfxQfx, result);
+            new Account
+            {
+                AccountType = "Checking",
+                AccountNickname = "Different",
+                AccountNumber = "000099995555",
+                AccountNumberLastFour = "5555"
+            }, ImportProfileCodes.OfxQfx, result));
+
+        ImportAccountValidation.Validate(new Account
+        {
+            AccountType = "Checking",
+            AccountNumber = "000012345678",
+            AccountNumberLastFour = "5678"
+        }, ImportProfileCodes.OfxQfx, result);
     }
 
     [TestMethod]
     public void CardStatementCannotBeImportedIntoItsPayingCheckingAccount()
     {
         ParseResult result = new OfxQfxParser().ParseText(XmlStatement(Transaction("PAYMENT", "500", "payment"), true));
-
         Assert.IsEmpty(result.Errors);
+
         Assert.ThrowsExactly<InvalidOperationException>(() => ImportAccountValidation.Validate(
-            new Account { AccountType = "Checking", AccountNumber = "000012345678", AccountNumberLastFour = "5678" }, ImportProfileCodes.OfxQfx, result));
+            new Account
+            {
+                AccountType = "Checking",
+                AccountNumber = "000012345678",
+                AccountNumberLastFour = "5678"
+            }, ImportProfileCodes.OfxQfx, result));
+
         ImportAccountValidation.Validate(new Account { AccountType = "Credit Card", AccountNumber = "000012345678", AccountNumberLastFour = "5678" }, ImportProfileCodes.OfxQfx, result);
     }
 
@@ -134,9 +148,7 @@ public sealed class OfxQfxParserTests
     public void OriginalForeignCurrencyDoesNotConvertAnAlreadyConvertedUsdAmountAgain()
     {
         string row = Transaction("POS", "-110.00", "foreign-purchase", "<ORIGCURRENCY><CURRATE>1.10</CURRATE><CURSYM>EUR</CURSYM></ORIGCURRENCY>");
-
         ParseResult result = new OfxQfxParser().ParseText(XmlStatement(row));
-
         Assert.IsEmpty(result.Errors);
         Assert.AreEqual(-110m, result.Rows.Single().Amount);
         Assert.AreEqual("USD", result.Rows.Single().Currency);
@@ -204,8 +216,8 @@ public sealed class OfxQfxParserTests
     [TestMethod]
     public void OfxDecimalCommaIsAFractionNotAThousandsSeparator()
     {
-        ParseResult result = new OfxQfxParser().ParseText(XmlStatement(Transaction("DEBIT", "-19,95", "comma")
-            + Transaction("DEBIT", "-.50", "fraction") + Transaction("DEP", "+1200.000", "trailing-zeros")));
+        ParseResult result = new OfxQfxParser().ParseText(XmlStatement(Transaction("DEBIT", "-19,95", "comma") +
+            Transaction("DEBIT", "-.50", "fraction") + Transaction("DEP", "+1200.000", "trailing-zeros")));
 
         Assert.IsEmpty(result.Errors);
         CollectionAssert.AreEqual(new[] { -19.95m, -.5m, 1200m }, result.Rows.Select(row => row.Amount).ToArray());
@@ -216,7 +228,6 @@ public sealed class OfxQfxParserTests
     {
         string row = Transaction("DEBIT", "-10", "native-Case-ID");
         ParseResult result = new OfxQfxParser().ParseText(XmlStatement(row + row));
-
         Assert.IsEmpty(result.Errors);
         Assert.HasCount(2, result.Rows);
         Assert.IsTrue(result.Rows.All(transaction => transaction.ExternalTransactionId == "native-Case-ID"));
@@ -230,9 +241,7 @@ public sealed class OfxQfxParserTests
     public void BackdatedPostedItemsAreNotLostOutsideTheServerSearchWindow()
     {
         string row = Transaction("DEBIT", "-10", "late-posted").Replace("20260402", "20260331235959.999[14:LINT]", StringComparison.Ordinal);
-
         ParseResult result = new OfxQfxParser().ParseText(XmlStatement(row));
-
         Assert.IsEmpty(result.Errors);
         Assert.AreEqual(new DateOnly(2026, 3, 31), result.Rows.Single().Date);
         Assert.AreEqual(new DateOnly(2026, 3, 31), result.Rows.Single().PostingDate);
@@ -264,9 +273,7 @@ public sealed class OfxQfxParserTests
     public void TransferDestinationAndCheckReferencesRemainAvailableForReconciliation()
     {
         string metadata = "<CHECKNUM>1234</CHECKNUM><REFNUM>REF-12</REFNUM><BANKACCTTO><BANKID>111222333</BANKID><ACCTID>000099991234</ACCTID><ACCTTYPE>SAVINGS</ACCTTYPE></BANKACCTTO>";
-
         ParseResult result = new OfxQfxParser().ParseText(XmlStatement(Transaction("XFER", "-100", "transfer", metadata)));
-
         Assert.IsEmpty(result.Errors);
         Assert.AreEqual("Transfer", result.Rows.Single().Type);
         Assert.IsTrue(result.Rows.Single().Memo!.Contains("BANKACCTTO ACCTID: 000099991234", StringComparison.Ordinal));
@@ -290,8 +297,10 @@ public sealed class OfxQfxParserTests
     public void XmlDtdsAndExternalEntitiesAreRejectedWithoutResolution()
     {
         string file = XmlStatement(Transaction("DEBIT", "-10", "valid"));
+
         AssertRejected(file.Replace("<OFX>", "<!DOCTYPE OFX [<!ENTITY external SYSTEM 'file:///nonexistent-financial-data'>]><OFX>", StringComparison.Ordinal)
             .Replace("Example merchant", "&external;", StringComparison.Ordinal));
+
         AssertRejected(file.Replace("<OFX>", "<!DOCTYPE OFX SYSTEM 'https://example.invalid/remote.dtd'><OFX>", StringComparison.Ordinal));
         AssertRejected(SgmlFromXml(file).Replace("<OFX>", "<!DOCTYPE OFX SYSTEM 'https://example.invalid/remote.dtd'><OFX>", StringComparison.Ordinal));
     }
@@ -303,7 +312,6 @@ public sealed class OfxQfxParserTests
             .Replace("Example merchant", "<![CDATA[A & B <Market>]]>", StringComparison.Ordinal);
 
         ParseResult result = new OfxQfxParser().ParseText(file);
-
         Assert.IsEmpty(result.Errors);
         Assert.AreEqual("A & B <Market>", result.Rows.Single().Description);
         AssertRejected(file.Replace("http://ofx.net/types/2003/04", "https://unknown.example/ofx", StringComparison.Ordinal));
@@ -315,10 +323,11 @@ public sealed class OfxQfxParserTests
         string sgml = SgmlFromXml(XmlStatement(Transaction("DEBIT", "-10", "accent"))).Replace("Example merchant", "Café – shop", StringComparison.Ordinal);
         Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
         ParseResult western = await ParseBytesAsync(Encoding.GetEncoding(1252).GetBytes(sgml));
+
         string xml = XmlStatement(Transaction("DEBIT", "-10", "unicode")).Replace("encoding=\"UTF-8\"", "encoding=\"UTF-16\"", StringComparison.Ordinal)
             .Replace("Example merchant", "Café 東京", StringComparison.Ordinal);
-        ParseResult unicode = await ParseBytesAsync(Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(xml)).ToArray());
 
+        ParseResult unicode = await ParseBytesAsync(Encoding.Unicode.GetPreamble().Concat(Encoding.Unicode.GetBytes(xml)).ToArray());
         Assert.IsEmpty(western.Errors);
         Assert.IsEmpty(unicode.Errors);
         Assert.AreEqual("Café – shop", western.Rows.Single().Description);
@@ -331,9 +340,7 @@ public sealed class OfxQfxParserTests
         byte[] bytes = Encoding.UTF8.GetBytes(XmlStatement(Transaction("DEBIT", "-10", "valid")));
         int position = Array.IndexOf(bytes, (byte)'v', Array.IndexOf(bytes, (byte)'F'));
         bytes[position] = 0xFF;
-
         ParseResult result = await ParseBytesAsync(bytes);
-
         Assert.IsEmpty(result.Rows);
         Assert.IsNotEmpty(result.Errors);
     }
@@ -354,15 +361,18 @@ public sealed class OfxQfxParserTests
     }
 
     private static string Transaction(string type, string amount, string id, string extra = "")
-        => $"<STMTTRN><TRNTYPE>{type}</TRNTYPE><DTPOSTED>20260402</DTPOSTED><TRNAMT>{amount}</TRNAMT><FITID>{id}</FITID><NAME>Example merchant</NAME>{extra}</STMTTRN>";
+    {
+        return $"<STMTTRN><TRNTYPE>{type}</TRNTYPE><DTPOSTED>20260402</DTPOSTED><TRNAMT>{amount}</TRNAMT><FITID>{id}</FITID><NAME>Example merchant</NAME>{extra}</STMTTRN>";
+    }
 
     private static string XmlStatement(string transactions, bool card = false)
     {
         string messages = card ? "CREDITCARDMSGSRSV1" : "BANKMSGSRSV1";
         string wrapper = card ? "CCSTMTTRNRS" : "STMTTRNRS";
         string statement = card ? "CCSTMTRS" : "STMTRS";
-        string account = card ? "<CCACCTFROM><ACCTID>000012345678</ACCTID></CCACCTFROM>"
-            : "<BANKACCTFROM><BANKID>123456789</BANKID><ACCTID>000012345678</ACCTID><ACCTTYPE>CHECKING</ACCTTYPE></BANKACCTFROM>";
+
+        string account = card ? "<CCACCTFROM><ACCTID>000012345678</ACCTID></CCACCTFROM>" : "<BANKACCTFROM><BANKID>123456789</BANKID><ACCTID>000012345678</ACCTID><ACCTTYPE>CHECKING</ACCTTYPE></BANKACCTFROM>";
+
         return $"""
             <?xml version="1.0" encoding="UTF-8"?>
             <?OFX OFXHEADER="200" VERSION="230" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
@@ -378,18 +388,25 @@ public sealed class OfxQfxParserTests
     {
         string body = xml[xml.IndexOf("<OFX>", StringComparison.Ordinal)..];
         string[] leaves = ["TRNUID", "CODE", "SEVERITY", "CURDEF", "BANKID", "ACCTID", "ACCTTYPE", "DTSTART", "DTEND", "TRNTYPE", "DTPOSTED", "TRNAMT", "FITID", "NAME", "BALAMT", "DTASOF"];
-        foreach (string leaf in leaves) body = body.Replace("</" + leaf + ">", "\n", StringComparison.Ordinal);
+
+        foreach (string leaf in leaves)
+        {
+            body = body.Replace("</" + leaf + ">", "\n", StringComparison.Ordinal);
+        }
+
         return "OFXHEADER:100\nDATA:OFXSGML\nVERSION:102\nSECURITY:NONE\nENCODING:USASCII\nCHARSET:1252\nCOMPRESSION:NONE\nOLDFILEUID:NONE\nNEWFILEUID:NONE\n\n" + body;
     }
 
     private static async Task<ParseResult> ParseBytesAsync(byte[] bytes)
     {
         string path = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N") + ".qfx");
+
         try
         {
             await File.WriteAllBytesAsync(path, bytes);
             return await new OfxQfxParser().ParseAsync(path);
         }
+
         finally { File.Delete(path); }
     }
 }

@@ -154,11 +154,17 @@ namespace PersonalFinanceManager.App.UI.Views
             Button save = new() { Text = "Save", Width = 100, Tag = "PrimaryButton" };
             save.Click += (_, _) => Save();
             buttons.Controls.Add(save);
-            Label guidance = new() { Dock = DockStyle.Fill, AutoSize = false,
+
+            Label guidance = new()
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = false,
                 Text = "PurchaseMirror: original wallet purchase → same signed purchase on the funding account. " +
                     "PurchaseFundingAllocation: wallet purchase → combined bank/card debit; enter the portion funded and repeat for each purchase. " +
                     "CreditCardPaymentFunding: positive credit/Smart Connect payment → equal negative bank payment; it may settle many purchases. " +
-                    "BankTransfer: equal opposite amounts between owned cash accounts. Dates may differ; verify the statements before saving." };
+                    "BankTransfer: equal opposite amounts between owned cash accounts. Dates may differ; verify the statements before saving."
+            };
+
             root.Controls.Add(guidance, 0, 4);
             UiTheme.ApplyTo(this);
         }

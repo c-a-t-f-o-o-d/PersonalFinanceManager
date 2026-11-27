@@ -154,6 +154,7 @@ public sealed class PayPalCsvParserTests
             Row(("Transaction ID", "REPAY1"), ("Type", "Provider label"), ("Transaction Event Code", "T1602")),
             Row(("Transaction ID", "FEE1"), ("Type", "Provider label"), ("Transaction Event Code", "T0107")),
             Row(("Transaction ID", "FEERETURN1"), ("Type", "Provider label"), ("Transaction Event Code", "T1109"), ("Gross", "10.00"), ("Net", "10.00"), ("Balance Impact", "Credit"))));
+
         Assert.IsEmpty(result.Errors);
         CollectionAssert.AreEqual(new[] { "Buyer Credit Payment", "Fee", "Refund" }, result.Rows.Select(row => row.Type).ToArray());
         Assert.AreEqual("Fees", result.Rows[2].SourceCategory);
@@ -164,6 +165,7 @@ public sealed class PayPalCsvParserTests
     {
         ParseResult result = new PayPalActivityCsvParser().ParseText(Activity(Row(
             ("Type", "Payment Received"), ("Transaction Event Code", "T0021"), ("Gross", "10.00"), ("Net", "10.00"), ("Balance Impact", "Credit"))));
+
         Assert.IsEmpty(result.Errors);
         Assert.AreEqual("Unclassified Credit", result.Rows.Single().Type);
     }
@@ -184,8 +186,7 @@ public sealed class PayPalCsvParserTests
     [TestMethod]
     public void Activity_IdenticalSourceIdsDeduplicateButDifferentIdsPreserveMultiplicity()
     {
-        ParseResult result = new PayPalActivityCsvParser().ParseText(Activity(
-            Row(("Transaction ID", "A1")), Row(("Transaction ID", "A1")), Row(("Transaction ID", "A2"))));
+        ParseResult result = new PayPalActivityCsvParser().ParseText(Activity(Row(("Transaction ID", "A1")), Row(("Transaction ID", "A1")), Row(("Transaction ID", "A2"))));
         Assert.IsEmpty(result.Errors);
         Assert.HasCount(2, result.Rows);
         Assert.AreEqual(-20m, result.Rows.Sum(row => row.Amount));
@@ -195,8 +196,7 @@ public sealed class PayPalCsvParserTests
     [TestMethod]
     public void Activity_ConflictingSourceIdsAreReportedWithoutInsertingTheConflictingRow()
     {
-        ParseResult result = new PayPalActivityCsvParser().ParseText(Activity(
-            Row(("Transaction ID", "A1")), Row(("Transaction ID", "A1"), ("Gross", "-11.00"), ("Net", "-11.00"))));
+        ParseResult result = new PayPalActivityCsvParser().ParseText(Activity(Row(("Transaction ID", "A1")), Row(("Transaction ID", "A1"), ("Gross", "-11.00"), ("Net", "-11.00"))));
         Assert.HasCount(1, result.Errors);
         Assert.HasCount(1, result.Rows);
         Assert.AreEqual(-10m, result.Rows[0].Amount);
@@ -205,9 +205,7 @@ public sealed class PayPalCsvParserTests
     [TestMethod]
     public void Activity_FeeIdentityCollisionRejectsTheEntireFile()
     {
-        ParseResult result = new PayPalActivityCsvParser().ParseText(Activity(
-            Row(("Transaction ID", "A1"), ("Fee", "-1.00"), ("Net", "-11.00")),
-            Row(("Transaction ID", "A1:fee"))));
+        ParseResult result = new PayPalActivityCsvParser().ParseText(Activity(Row(("Transaction ID", "A1"), ("Fee", "-1.00"), ("Net", "-11.00")), Row(("Transaction ID", "A1:fee"))));
         Assert.HasCount(1, result.Errors);
         Assert.IsEmpty(result.Rows);
     }
@@ -321,24 +319,52 @@ public sealed class PayPalCsvParserTests
         Assert.IsEmpty(continuation.Rows);
     }
 
-    private static Dictionary<string, string> Row(params (string Key, string Value)[] fields) => fields.ToDictionary(field => field.Key, field => field.Value, StringComparer.OrdinalIgnoreCase);
-    private static string Activity(params Dictionary<string, string>[] rows) => Build(true, rows);
-    private static string Statement(params Dictionary<string, string>[] rows) => Build(false, rows);
+    private static Dictionary<string, string> Row(params (string Key, string Value)[] fields)
+    {
+        return fields.ToDictionary(field => field.Key, field => field.Value, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string Activity(params Dictionary<string, string>[] rows)
+    {
+        return Build(true, rows);
+    }
+
+    private static string Statement(params Dictionary<string, string>[] rows)
+    {
+        return Build(false, rows);
+    }
 
     private static string Build(bool activity, params Dictionary<string, string>[] rows)
     {
         string[] headers = activity
             ? ["Date", "Time", "TimeZone", "Name", "Type", "Status", "Currency", "Gross", "Fee", "Net", "Transaction ID", "Balance Impact", "Transaction Event Code", "Payment Source", "Reference Txn ID", "Note", "From Email Address", "To Email Address"]
             : ["Date", "Time", "Time Zone", "Description", "Currency", "Gross", "Fee", "Net", "Balance", "Transaction ID", "Name", "Bank Name", "Bank Account", "Reference Txn ID"];
+
         Dictionary<string, string> defaults = new(StringComparer.OrdinalIgnoreCase)
         {
-            ["Date"] = "04/05/2026", ["Time"] = "13:14:15", ["TimeZone"] = "PDT", ["Time Zone"] = "PDT", ["Name"] = "Example Merchant",
-            ["Type"] = "Express Checkout Payment", ["Description"] = "Express Checkout Payment", ["Status"] = "Completed", ["Currency"] = "USD",
-            ["Gross"] = "-10.00", ["Fee"] = "0.00", ["Net"] = "-10.00", ["Balance"] = "90.00", ["Transaction ID"] = "EXAMPLE1", ["Balance Impact"] = "Debit"
+            ["Date"] = "04/05/2026",
+            ["Time"] = "13:14:15",
+            ["TimeZone"] = "PDT",
+            ["Time Zone"] = "PDT",
+            ["Name"] = "Example Merchant",
+            ["Type"] = "Express Checkout Payment",
+            ["Description"] = "Express Checkout Payment",
+            ["Status"] = "Completed",
+            ["Currency"] = "USD",
+            ["Gross"] = "-10.00",
+            ["Fee"] = "0.00",
+            ["Net"] = "-10.00",
+            ["Balance"] = "90.00",
+            ["Transaction ID"] = "EXAMPLE1",
+            ["Balance Impact"] = "Debit"
         };
+
         return string.Join(",", headers.Select(Cell)) + "\n" + string.Join("\n", rows.Select(row => string.Join(",", headers.Select(header =>
             Cell(row.TryGetValue(header, out string? value) ? value : defaults.GetValueOrDefault(header) ?? string.Empty))))) + "\n";
     }
 
-    private static string Cell(string value) => "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+    private static string Cell(string value)
+    {
+        return "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+    }
 }

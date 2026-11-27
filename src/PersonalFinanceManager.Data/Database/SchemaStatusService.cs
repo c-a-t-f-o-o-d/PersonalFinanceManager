@@ -79,6 +79,7 @@ namespace PersonalFinanceManager.Data.Database
             HashSet<string> appliedScriptNames = migrationTableExists
                 ? await GetAppliedScriptNamesAsync(connection, cancellationToken).ConfigureAwait(false)
                 : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             HashSet<string> appliedSchemaVersions = await GetAppliedSchemaVersionsAsync(connection, cancellationToken).ConfigureAwait(false);
             status.AppliedMigrationCount = appliedScriptNames.Count;
             status.FailedMigrationCount = migrationTableExists ? await GetFailedMigrationCountAsync(connection, cancellationToken).ConfigureAwait(false) : 0;
@@ -114,6 +115,7 @@ namespace PersonalFinanceManager.Data.Database
             foreach (string scriptPath in _scriptLocator.GetMigrationScriptPaths())
             {
                 string scriptName = Path.GetFileName(scriptPath) ?? string.Empty;
+
                 if (_scriptLocator.ObsoleteScripts.Contains(scriptName) || appliedScriptNames.Contains(scriptName))
                 {
                     continue;
@@ -121,6 +123,7 @@ namespace PersonalFinanceManager.Data.Database
 
                 string scriptText = File.ReadAllText(scriptPath);
                 string? schemaVersion = DatabaseMigrationDescriptor.ExtractSchemaVersion(scriptText);
+
                 if (!string.IsNullOrWhiteSpace(schemaVersion) && appliedSchemaVersions.Contains(schemaVersion))
                 {
                     continue;

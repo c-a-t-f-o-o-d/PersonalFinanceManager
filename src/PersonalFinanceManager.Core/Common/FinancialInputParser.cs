@@ -19,14 +19,25 @@ namespace PersonalFinanceManager.Core.Common
 
             string numericText = text.Trim();
             bool parenthesized = numericText.StartsWith('(') && numericText.EndsWith(')');
-            if (parenthesized) numericText = numericText[1..^1].Trim();
+
+            if (parenthesized)
+            {
+                numericText = numericText[1..^1].Trim();
+            }
+
             string sign = string.Empty;
+
             if (numericText.StartsWith('-') || numericText.StartsWith('+'))
             {
                 sign = numericText[..1];
                 numericText = numericText[1..].Trim();
             }
-            if (numericText.StartsWith('$')) numericText = numericText[1..].Trim();
+
+            if (numericText.StartsWith('$'))
+            {
+                numericText = numericText[1..].Trim();
+            }
+
             if (parenthesized && sign.Length != 0)
             {
                 throw new FormatException($"{fieldName} must use either a sign or parentheses, not both.");
@@ -39,9 +50,13 @@ namespace PersonalFinanceManager.Core.Common
                 throw new FormatException($"{fieldName} must be a valid number with no more than {scale} decimal places.");
             }
 
-            if (parenthesized) value = -value;
+            if (parenthesized)
+            {
+                value = -value;
+            }
 
             decimal limit = scale == 5 ? 9999.99999M : 9999999999999999.99M;
+
             if (value < -limit || value > limit)
             {
                 throw new FormatException($"{fieldName} is outside the supported range.");
@@ -73,6 +88,7 @@ namespace PersonalFinanceManager.Core.Common
             }
 
             string[] formats = ["yyyy-MM-dd", "M/d/yyyy", "MM/dd/yyyy"];
+
             if (!DateOnly.TryParseExact(text.Trim(), formats, CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly value))
             {
                 throw new FormatException($"{fieldName} must be a valid date in yyyy-MM-dd or M/d/yyyy format.");

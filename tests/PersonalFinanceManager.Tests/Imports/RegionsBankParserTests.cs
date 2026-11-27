@@ -84,6 +84,5 @@ namespace PersonalFinanceManager.Tests.Imports
             Assert.IsNull(result.Rows[0].SourceCategory);
             Assert.IsNull(result.Rows[0].SourceCategoryType);
         }
-
     }
 }

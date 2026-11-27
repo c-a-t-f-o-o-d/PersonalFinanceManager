@@ -17,7 +17,7 @@ namespace PersonalFinanceManager.Tests.Integration;
 [DoNotParallelize]
 public sealed class FinancialTrackingSqlTests
 {
-    private const string DatabasePrefix = "PFM_Integrity_";
+    private const string _databasePrefix = "PFM_Integrity_";
     private string _databaseName = string.Empty;
     private string _directory = string.Empty;
     private SqlConnectionFactory? _connections;
@@ -39,9 +39,10 @@ public sealed class FinancialTrackingSqlTests
             Assert.Inconclusive("SQL integration tests require Windows LocalDB and PFM_RUN_SQL_TESTS=1.");
         }
 
-        _databaseName = DatabasePrefix + Guid.NewGuid().ToString("N");
+        _databaseName = _databasePrefix + Guid.NewGuid().ToString("N");
         _directory = Path.Combine(Path.GetTempPath(), "PersonalFinanceManager.Tests", _databaseName);
         Directory.CreateDirectory(_directory);
+
         SqlConnectionStringBuilder builder = new()
         {
             DataSource = @"(localdb)\MSSQLLocalDB",
@@ -51,6 +52,7 @@ public sealed class FinancialTrackingSqlTests
             Pooling = false,
             ConnectTimeout = 30
         };
+
         _connections = new SqlConnectionFactory(builder.ConnectionString);
         _initializer = new DatabaseInitializer(_connections, new FileLogger());
         _initialization = await _initializer.InitializeAsync();
@@ -67,13 +69,13 @@ public sealed class FinancialTrackingSqlTests
     [TestCleanup]
     public async Task DropIsolatedDatabase()
     {
-        if (_connections is not null && _databaseName.StartsWith(DatabasePrefix, StringComparison.Ordinal)
-            && Guid.TryParseExact(_databaseName[DatabasePrefix.Length..], "N", out _))
+        if (_connections is not null && _databaseName.StartsWith(_databasePrefix, StringComparison.Ordinal) && Guid.TryParseExact(_databaseName[_databasePrefix.Length..], "N", out _))
         {
             await using SqlConnection master = _connections.CreateMasterConnection();
             await master.OpenAsync();
             await using SqlCommand command = master.CreateCommand();
             command.CommandTimeout = 60;
+
             command.CommandText = """
                 IF DB_ID(@DatabaseName) IS NOT NULL
                 BEGIN
@@ -82,12 +84,12 @@ public sealed class FinancialTrackingSqlTests
                     EXEC sys.sp_executesql @Sql;
                 END;
                 """;
+
             command.Parameters.Add(new SqlParameter("@DatabaseName", SqlDbType.NVarChar, 128) { Value = _databaseName });
             await command.ExecuteNonQueryAsync();
         }
 
-        if (!string.IsNullOrEmpty(_directory) && Directory.Exists(_directory)
-            && string.Equals(Path.GetFileName(_directory), _databaseName, StringComparison.Ordinal))
+        if (!string.IsNullOrEmpty(_directory) && Directory.Exists(_directory) && string.Equals(Path.GetFileName(_directory), _databaseName, StringComparison.Ordinal))
         {
             Directory.Delete(_directory, recursive: true);
         }
@@ -103,11 +105,9 @@ public sealed class FinancialTrackingSqlTests
         Assert.AreEqual(_initialization.Migrations.Count, repeated.Migrations.Count);
         Assert.AreEqual(_databaseName, await ScalarAsync<string>("SELECT DB_NAME();"));
         Assert.AreEqual(1, await ScalarAsync<int>("SELECT COUNT(*) FROM sys.columns WHERE object_id = OBJECT_ID(N'dbo.ImportRow') AND name = N'AcceptedTransactionId';"));
-
         DemoDataLoadResult demo = await new DemoDataService(_connections!).LoadDemoDataAsync();
         Assert.IsTrue(demo.TransactionsCreated > 0);
         Assert.IsEmpty((await _reports.GetExpenseReportAsync(new ExpenseReportFilter())).Warnings);
-
         DatabaseBackupResult backup = await new DatabaseBackupService(_connections!).CreateSqlBackupAsync(_directory);
         Assert.IsTrue(backup.Succeeded, backup.Message);
         Assert.IsTrue(backup.Verified, backup.Message);
@@ -119,7 +119,6 @@ public sealed class FinancialTrackingSqlTests
         await using SqlDataReader reader = await command.ExecuteReaderAsync();
         Assert.IsTrue(await reader.ReadAsync());
         Assert.AreEqual(_databaseName, reader.GetString(reader.GetOrdinal("DatabaseName")));
-
         DatabaseBackupResult export = await new DatabaseBackupService(_connections!).ExportDataZipAsync(_directory);
         Assert.IsTrue(export.Succeeded, export.Message);
         using ZipArchive archive = ZipFile.OpenRead(export.FilePath);
@@ -144,7 +143,6 @@ public sealed class FinancialTrackingSqlTests
         Assert.AreEqual(2, repeated.ExactDuplicateRows);
         Assert.HasCount(2, await RowsAsync());
         Assert.AreEqual(24.68m, await ExpensesAsync());
-
         IReadOnlyList<DuplicateReviewItem> skipped = await _duplicates.GetAsync(new DuplicateReviewFilter { Status = DuplicateReviewStatuses.ExactDuplicateSkipped });
         Assert.HasCount(2, skipped);
         long recovered = await _duplicates.ApproveAsync(skipped[0].ImportRowId);
@@ -156,6 +154,65 @@ public sealed class FinancialTrackingSqlTests
 
     [TestMethod]
     [OSCondition(OperatingSystems.Windows)]
+    public async Task GeneratedImportIdsRequireReviewWhenOverlappingDescriptionsChange()
+    {
+        (string Profile, string AccountType, string Header, string Row)[] formats =
+        [
+            (ImportProfileCodes.AllyCheckingCsv, "Checking", "Date,Time,Amount,Type,Description\n", "2026-04-01,12:00:00,-25.00,Withdrawal,{0}\n"),
+            (ImportProfileCodes.AppleCardCsv, "Credit Card", "Transaction Date,Clearing Date,Description,Merchant,Category,Type,Amount (USD),Purchased By\n", "04/01/2026,04/02/2026,{0},Example merchant,Shopping,Purchase,25.00,Example owner\n"),
+            (ImportProfileCodes.ChaseCreditCardCsv, "Credit Card", "Transaction Date,Post Date,Description,Category,Type,Amount,Memo\n", "04/01/2026,04/02/2026,{0},Shopping,Sale,-25.00,\n"),
+            (ImportProfileCodes.RegionsBankCsv, "Checking", "Account,Transaction Date,Posted Date,No.,Description,Debit,Credit,Long Description\n", "1111,04/01/2026,04/02/2026,,{0},25.00,,Example purchase\n"),
+            (ImportProfileCodes.AccountActivityCsv, "Checking", "Date,Amount,Type,Description\n", "2026-04-01,-25.00,Purchase,{0}\n"),
+            (ImportProfileCodes.CreditAccountCsv, "Credit Card", "Date,Amount,Type,Description\n", "2026-04-01,-25.00,Purchase,{0}\n"),
+            (ImportProfileCodes.PayPalSmartConnectCsv, "Line of Credit", "Date,Amount,Type,Description\n", "2026-04-01,-25.00,Purchase,{0}\n"),
+            (ImportProfileCodes.PayPalStatement, "Digital Wallet", "ACCOUNT ACTIVITY\n", "04/01/2026\nPreApproved Payment:\n{0}\nUSD -25.00 0.00 -25.00\n")
+        ];
+
+        foreach (var format in formats)
+        {
+            Account account = await AccountAsync("Example " + format.Profile, format.AccountType, "1111");
+            string originalRow = string.Format(CultureInfo.InvariantCulture, format.Row, "ORIGINAL STORE");
+            string original = await FileAsync(format.Header + originalRow + originalRow);
+            ImportSummary first = await _imports.ImportAsync(account.AccountId, format.Profile, original);
+            Assert.AreEqual(0, first.ErrorRows, format.Profile);
+            Assert.AreEqual(2, first.InsertedRows, format.Profile + ": identical purchases in one file must remain distinct.");
+            ImportSummary repeated = await _imports.ImportAsync(account.AccountId, format.Profile, original);
+            Assert.AreEqual(0, repeated.InsertedRows, format.Profile);
+            Assert.AreEqual(2, repeated.ExactDuplicateRows, format.Profile);
+            string correctedRow = string.Format(CultureInfo.InvariantCulture, format.Row, "CORRECTED STORE");
+            ImportSummary corrected = await _imports.ImportAsync(account.AccountId, format.Profile, await FileAsync(format.Header + correctedRow + correctedRow));
+            Assert.AreEqual(0, corrected.ErrorRows, format.Profile);
+            Assert.AreEqual(0, corrected.InsertedRows, format.Profile + ": changed generated IDs do not prove new purchases.");
+            Assert.AreEqual(2, corrected.DuplicateReviewRows, format.Profile);
+            Assert.HasCount(2, (await RowsAsync()).Where(row => row.AccountId == account.AccountId).ToArray(), format.Profile);
+            Assert.AreEqual(50m, (await _reports.GetExpenseReportAsync(new ExpenseReportFilter { AccountId = account.AccountId })).Metrics.TotalExpenses, format.Profile);
+        }
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    public async Task NormalizedImportsDistinguishExplicitIdsFromGeneratedIdentities()
+    {
+        foreach (string profile in new[] { ImportProfileCodes.AccountActivityCsv, ImportProfileCodes.CreditAccountCsv, ImportProfileCodes.PayPalSmartConnectCsv })
+        {
+            Account account = await AccountAsync("Explicit " + profile, "Credit Card", "2222");
+            Assert.AreEqual(1, (await ImportAsync(account, [new(1, -25m, "Purchase", "EXAMPLE STORE", "SOURCE-1")], profile)).InsertedRows);
+            ImportSummary distinct = await ImportAsync(account, [new(1, -25m, "Purchase", "EXAMPLE STORE", "SOURCE-2")], profile);
+            Assert.AreEqual(1, distinct.InsertedRows, profile + ": distinct explicit source IDs establish separate purchases.");
+            Assert.AreEqual(0, distinct.DuplicateReviewRows, profile);
+            ImportSummary generated = await _imports.ImportAsync(account.AccountId, profile, await FileAsync("Date,Amount,Type,Description\n2026-04-01,-25.00,Purchase,EXAMPLE STORE\n"));
+            Assert.AreEqual(0, generated.InsertedRows, profile);
+            Assert.AreEqual(1, generated.DuplicateReviewRows, profile + ": a generated candidate ID cannot bypass existing explicit IDs.");
+            Account generatedAccount = await AccountAsync("Generated " + profile, "Credit Card", "3333");
+            Assert.AreEqual(1, (await _imports.ImportAsync(generatedAccount.AccountId, profile, await FileAsync("Date,Amount,Type,Description\n2026-04-01,-25.00,Purchase,EXAMPLE STORE\n"))).InsertedRows);
+            ImportSummary explicitCandidate = await ImportAsync(generatedAccount, [new(1, -25m, "Purchase", "EXAMPLE STORE", "SOURCE-3")], profile);
+            Assert.AreEqual(0, explicitCandidate.InsertedRows, profile);
+            Assert.AreEqual(1, explicitCandidate.DuplicateReviewRows, profile + ": an explicit candidate ID cannot bypass an existing generated identity.");
+        }
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
     public async Task ConcurrentDuplicateAcceptanceInsertsOnceAndDeletionClearsOrigin()
     {
         Account checking = await AccountAsync("Everyday Checking", "Checking", "1111");
@@ -163,12 +220,10 @@ public sealed class FinancialTrackingSqlTests
         ImportSummary changed = await ImportAsync(checking, [new(1, -25m, "Withdrawal", "CORRECTED STORE", "EVENT1")]);
         Assert.AreEqual(1, changed.DuplicateReviewRows);
         DuplicateReviewItem candidate = (await _duplicates.GetAsync(new DuplicateReviewFilter())).Single();
-
         long[] accepted = await Task.WhenAll(_duplicates.ApproveAsync(candidate.ImportRowId), _duplicates.ApproveAsync(candidate.ImportRowId));
         Assert.AreEqual(accepted[0], accepted[1]);
         Assert.HasCount(2, await RowsAsync());
         Assert.AreEqual(1, await ScalarAsync<int>("SELECT COUNT(*) FROM dbo.ImportRow WHERE [Status] = N'DuplicateAccepted' AND AcceptedTransactionId IS NOT NULL;"));
-
         await _transactions.DeleteAsync(accepted[0]);
         Assert.HasCount(1, await RowsAsync());
         Assert.AreEqual(1, await ScalarAsync<int>("SELECT COUNT(*) FROM dbo.ImportRow WHERE [Status] = N'Deleted' AND AcceptedTransactionId IS NULL;"));
@@ -204,16 +259,26 @@ public sealed class FinancialTrackingSqlTests
         Assert.AreEqual(0m, household.TotalMoneyOut);
         Assert.AreEqual(1000m, (await _reports.GetMoneyInOutSummaryAsync(new ExpenseReportFilter { AccountId = checking.AccountId })).TotalMoneyOut);
         Assert.AreEqual(1000m, (await _reports.GetMoneyInOutSummaryAsync(new ExpenseReportFilter { AccountId = savings.AccountId })).TotalMoneyIn);
-
         AccountReconciliationRepository reconciliation = new(_connections!);
+
         AccountReconciliation checkedStatement = await reconciliation.CheckAsync(new AccountReconciliationRequest
         {
-            AccountId = checking.AccountId, FromDate = new(2026, 4, 1), ToDate = new(2026, 4, 30), OpeningBalance = 1500m, ClosingBalance = 500m
+            AccountId = checking.AccountId,
+            FromDate = new(2026, 4, 1),
+            ToDate = new(2026, 4, 30),
+            OpeningBalance = 1500m,
+            ClosingBalance = 500m
         }, record: true);
+
         AccountReconciliation savedStatement = await reconciliation.CheckAsync(new AccountReconciliationRequest
         {
-            AccountId = savings.AccountId, FromDate = new(2026, 4, 1), ToDate = new(2026, 4, 30), OpeningBalance = 200m, ClosingBalance = 1200m
+            AccountId = savings.AccountId,
+            FromDate = new(2026, 4, 1),
+            ToDate = new(2026, 4, 30),
+            OpeningBalance = 200m,
+            ClosingBalance = 1200m
         }, record: true);
+
         Assert.IsTrue(checkedStatement.IsBalanced);
         Assert.IsTrue(savedStatement.IsBalanced);
         await _imports.ReapplyRulesAsync();
@@ -240,7 +305,6 @@ public sealed class FinancialTrackingSqlTests
         ImportSummary repeated = await ImportAsync(card, cardRows, ImportProfileCodes.PayPalSmartConnectCsv);
         Assert.AreEqual(0, repeated.InsertedRows);
         Assert.HasCount(6, await RowsAsync());
-
         TransactionLinkRecord mirror = (await LinksAsync()).Single(link => link.LinkType == TransactionLinkTypes.PurchaseMirror && link.SourceAmount == -40m);
         await _links.DeleteAsync(mirror.TransactionLinkId);
         Assert.AreEqual(140m, await ExpensesAsync());
@@ -281,19 +345,34 @@ public sealed class FinancialTrackingSqlTests
     {
         Account wallet = await AccountAsync("PayPal Wallet", "PayPal Wallet", "3333");
         Account checking = await AccountAsync("Everyday Checking", "Checking", "1111");
+
         long manualId = await _transactions.SaveAsync(new ImportedTransaction
         {
-            AccountId = checking.AccountId, TransactionDate = new(2026, 4, 1), Amount = -25m, Type = "Withdrawal",
-            Description = "MANUAL TRANSFER", Category = "Transfer", IsTransfer = true, IsManual = true, ClassificationIsManual = true
+            AccountId = checking.AccountId,
+            TransactionDate = new(2026, 4, 1),
+            Amount = -25m,
+            Type = "Withdrawal",
+            Description = "MANUAL TRANSFER",
+            Category = "Transfer",
+            IsTransfer = true,
+            IsManual = true,
+            ClassificationIsManual = true
         });
+
         await ImportAsync(wallet, [new(10, -40m, "Purchase", "UNIQUE MERCHANT", "W1", "Checking 1111", "Shopping")]);
         await ImportAsync(checking, [new(10, -40m, "Withdrawal", "PAYPAL UNIQUE MERCHANT", "B1")]);
         Assert.HasCount(1, await LinksAsync());
+
         await _rules.SaveAsync(new FinancialRule
         {
-            RuleName = "Merchant groceries", MatchDescription = "UNIQUE MERCHANT", MatchType = "Withdrawal",
-            Category = "Groceries", SpendingClass = "Food", IsActive = true
+            RuleName = "Merchant groceries",
+            MatchDescription = "UNIQUE MERCHANT",
+            MatchType = "Withdrawal",
+            Category = "Groceries",
+            SpendingClass = "Food",
+            IsActive = true
         });
+
         await _imports.ReapplyRulesAsync();
         ImportedTransaction manual = (await _transactions.GetByIdAsync(manualId))!;
         Assert.IsTrue(manual.IsTransfer);
@@ -325,10 +404,16 @@ public sealed class FinancialTrackingSqlTests
         ImportSummary imported = await _imports.ImportAsync(wallet.AccountId, ImportProfileCodes.PayPalStatement, statement);
         Assert.AreEqual(1, imported.InsertedRows);
         AccountReconciliationRepository reconciliation = new(_connections!);
+
         await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => reconciliation.CheckAsync(new AccountReconciliationRequest
         {
-            AccountId = wallet.AccountId, FromDate = new(2026, 1, 1), ToDate = new(2026, 1, 31), OpeningBalance = 0m, ClosingBalance = 0m
+            AccountId = wallet.AccountId,
+            FromDate = new(2026, 1, 1),
+            ToDate = new(2026, 1, 31),
+            OpeningBalance = 0m,
+            ClosingBalance = 0m
         }, record: true));
+
         Assert.AreEqual(0, await ScalarAsync<int>("SELECT COUNT(*) FROM dbo.AccountReconciliation;"));
     }
 
@@ -342,10 +427,12 @@ public sealed class FinancialTrackingSqlTests
         await ImportAsync(checking, [new(1, -50m, "Withdrawal", "UNRELATED UTILITY", "B1")]);
         long source = (await RowsAsync()).Single(row => row.ExternalTransactionId == "W1").ImportedTransactionId;
         long linked = (await RowsAsync()).Single(row => row.ExternalTransactionId == "B1").ImportedTransactionId;
+
         await using (SqlConnection connection = _connections!.CreateConnection())
         {
             await connection.OpenAsync();
             await using SqlCommand seed = connection.CreateCommand();
+
             seed.CommandText = """
                 INSERT INTO dbo.TransactionLink(SourceTransactionId, LinkedTransactionId, LinkType, ConfidenceScore, Notes)
                 VALUES (@Source, @Linked, N'PayPalFunding', 95, N'Matched PayPal PreApproved Payment: SAMPLE STORE'),
@@ -356,6 +443,7 @@ public sealed class FinancialTrackingSqlTests
                 WHERE ImportedTransactionId = @Linked;
                 DELETE FROM dbo.SchemaMetadata WHERE SchemaVersion = N'2.22.0';
                 """;
+
             seed.Parameters.Add(new SqlParameter("@Source", SqlDbType.BigInt) { Value = source });
             seed.Parameters.Add(new SqlParameter("@Linked", SqlDbType.BigInt) { Value = linked });
             await seed.ExecuteNonQueryAsync();
@@ -376,11 +464,17 @@ public sealed class FinancialTrackingSqlTests
         Assert.AreEqual(100m, await ExpensesAsync());
         await _imports.RepairDataFlowAsync();
         Assert.AreEqual(100m, await ExpensesAsync());
+
         await _links.SaveAsync(new TransactionLinkEditModel
         {
-            TransactionLinkId = review.TransactionLinkId, SourceTransactionId = source, LinkedTransactionId = linked,
-            LinkType = TransactionLinkTypes.PurchaseMirror, ConfidenceScore = 100, Notes = "Confirmed against both statements."
+            TransactionLinkId = review.TransactionLinkId,
+            SourceTransactionId = source,
+            LinkedTransactionId = linked,
+            LinkType = TransactionLinkTypes.PurchaseMirror,
+            ConfidenceScore = 100,
+            Notes = "Confirmed against both statements."
         });
+
         Assert.AreEqual(50m, await ExpensesAsync());
     }
 
@@ -402,7 +496,11 @@ public sealed class FinancialTrackingSqlTests
 
         foreach (bool mirrorFirst in new[] { true, false })
         {
-            foreach (TransactionLinkRecord previous in await LinksAsync()) await _links.DeleteAsync(previous.TransactionLinkId);
+            foreach (TransactionLinkRecord previous in await LinksAsync())
+            {
+                await _links.DeleteAsync(previous.TransactionLinkId);
+            }
+
             TransactionLinkEditModel mirror = new() { SourceTransactionId = walletId, LinkedTransactionId = bankId, LinkType = TransactionLinkTypes.PurchaseMirror };
             TransactionLinkEditModel funding = new() { SourceTransactionId = cardId, LinkedTransactionId = bankId, LinkType = TransactionLinkTypes.CreditCardPaymentFunding };
             await _links.SaveAsync(mirrorFirst ? mirror : funding);
@@ -425,6 +523,7 @@ public sealed class FinancialTrackingSqlTests
     public async Task StandardStatementImportsPreserveClassificationAndReimportIdentity()
     {
         Account checking = await AccountAsync("Example Checking", "Checking", "1111");
+
         string ofx = await FileAsync("""
             <?xml version="1.0" encoding="UTF-8"?>
             <?OFX OFXHEADER="200" VERSION="230" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
@@ -438,13 +537,19 @@ public sealed class FinancialTrackingSqlTests
             </BANKTRANLIST><LEDGERBAL><BALAMT>965.00</BALAMT><DTASOF>20260430</DTASOF></LEDGERBAL>
             </STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>
             """, ".ofx");
+
         ImportSummary imported = await _imports.ImportAsync(checking.AccountId, ImportProfileCodes.OfxQfx, ofx);
         Assert.AreEqual(0, imported.ErrorRows);
         Assert.AreEqual(4, imported.InsertedRows);
         Assert.AreEqual(0, (await _imports.ImportAsync(checking.AccountId, ImportProfileCodes.OfxQfx, ofx)).InsertedRows);
+
         foreach (bool reapply in new[] { false, true })
         {
-            if (reapply) await _imports.ReapplyRulesAsync();
+            if (reapply)
+            {
+                await _imports.ReapplyRulesAsync();
+            }
+
             IReadOnlyList<ImportedTransaction> rows = await RowsAsync();
             ImportedTransaction credit = rows.Single(row => row.ExternalTransactionId == "UNCLASSIFIED");
             Assert.IsFalse(credit.IsIncome);
@@ -459,18 +564,22 @@ public sealed class FinancialTrackingSqlTests
             Assert.AreEqual(1, (await health.GetChecksAsync()).Single(check => check.IssueCode == DataHealthIssueCodes.ImportClassificationReview).Count);
             Assert.HasCount(1, await health.GetDetailsAsync(DataHealthIssueCodes.ImportClassificationReview));
         }
+
         AccountReconciliation balance = await new AccountReconciliationRepository(_connections!).CheckAsync(new AccountReconciliationRequest
         {
-            AccountId = checking.AccountId, FromDate = new(2026, 4, 1), ToDate = new(2026, 4, 30), OpeningBalance = 100m, ClosingBalance = 965m
+            AccountId = checking.AccountId,
+            FromDate = new(2026, 4, 1),
+            ToDate = new(2026, 4, 30),
+            OpeningBalance = 100m,
+            ClosingBalance = 965m
         }, record: false);
-        Assert.IsTrue(balance.IsBalanced);
 
+        Assert.IsTrue(balance.IsBalanced);
         ImportedTransaction unresolved = (await RowsAsync()).Single(row => row.ExternalTransactionId == "UNCLASSIFIED");
         await _transactions.UpdateCategorizationAsync([unresolved.ImportedTransactionId], "Salary", "Income");
         Assert.IsFalse((await _reports.GetSalarySpendingAnalysisAsync(new SalarySpendingFilter { AccountId = checking.AccountId })).CanEstimate);
         Assert.AreEqual(60m, (await _reports.GetExpenseReportAsync(new ExpenseReportFilter { AccountId = checking.AccountId })).Metrics.TotalExpenses);
         Assert.AreEqual(1, (await new DataHealthRepository(_connections!).GetChecksAsync()).Single(check => check.IssueCode == DataHealthIssueCodes.ImportClassificationReview).Count);
-
         Account card = await AccountAsync("Example Card", "Credit Card", "2222");
         string qif = await FileAsync("!Account\nNExample Card\nTCCard\n^\n!Type:CCard\nD4/6/2026\nT-40\nPExample store\n^\nD4/20/2026\nT40\nPExample repayment\nL[Example Checking]\n^\n", ".qif");
         Assert.AreEqual(2, (await _imports.ImportAsync(card.AccountId, ImportProfileCodes.Qif, qif)).InsertedRows);
@@ -517,10 +626,16 @@ public sealed class FinancialTrackingSqlTests
         Assert.AreEqual(120m, (await _reports.GetIncomeOwnerSummariesAsync(new SalarySpendingFilter())).Sum(row => row.TotalNetIncome));
         Assert.AreEqual(116m, (await _reports.GetMoneyInOutSummaryAsync(new ExpenseReportFilter())).NetCashFlow);
         Assert.IsTrue((await RowsAsync()).All(row => row.FundingSource is null));
+
         AccountReconciliation balance = await new AccountReconciliationRepository(_connections!).CheckAsync(new AccountReconciliationRequest
         {
-            AccountId = wallet.AccountId, FromDate = new(2026, 4, 1), ToDate = new(2026, 4, 30), OpeningBalance = 0m, ClosingBalance = 116m
+            AccountId = wallet.AccountId,
+            FromDate = new(2026, 4, 1),
+            ToDate = new(2026, 4, 30),
+            OpeningBalance = 0m,
+            ClosingBalance = 116m
         }, record: true);
+
         Assert.IsTrue(balance.IsBalanced);
         await _imports.ReapplyRulesAsync();
         Assert.AreEqual(4m, await ExpensesAsync());
@@ -536,12 +651,14 @@ public sealed class FinancialTrackingSqlTests
     private async Task<ImportSummary> ImportAsync(Account account, IReadOnlyList<Activity> rows, string profile = ImportProfileCodes.AccountActivityCsv)
     {
         string header = "Date,Amount,Type,Description,Account,Transaction ID,Funding Source,Category\n";
+
         string body = string.Join("\n", rows.Select(row => string.Join(",", new[]
         {
             new DateOnly(2026, 4, row.Day).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             row.Amount.ToString("0.00", CultureInfo.InvariantCulture), row.Type, row.Description, account.AccountNickname,
             row.Id, row.Funding ?? string.Empty, row.Category ?? string.Empty
         }.Select(CsvCell))));
+
         return await _imports.ImportAsync(account.AccountId, profile, await FileAsync(header + body + "\n"));
     }
 
@@ -552,9 +669,20 @@ public sealed class FinancialTrackingSqlTests
         return file;
     }
 
-    private Task<IReadOnlyList<ImportedTransaction>> RowsAsync() => _transactions.GetAsync(new TransactionFilter { MaxRows = 10000 });
-    private Task<IReadOnlyList<TransactionLinkRecord>> LinksAsync() => _links.GetLinksAsync(new TransactionLinkFilter { MaxRows = 10000 });
-    private async Task<decimal> ExpensesAsync() => (await _reports.GetExpenseMetricSummaryAsync(new ExpenseReportFilter())).TotalExpenses;
+    private Task<IReadOnlyList<ImportedTransaction>> RowsAsync()
+    {
+        return _transactions.GetAsync(new TransactionFilter { MaxRows = 10000 });
+    }
+
+    private Task<IReadOnlyList<TransactionLinkRecord>> LinksAsync()
+    {
+        return _links.GetLinksAsync(new TransactionLinkFilter { MaxRows = 10000 });
+    }
+
+    private async Task<decimal> ExpensesAsync()
+    {
+        return (await _reports.GetExpenseMetricSummaryAsync(new ExpenseReportFilter())).TotalExpenses;
+    }
 
     private async Task<T> ScalarAsync<T>(string query)
     {
@@ -565,6 +693,10 @@ public sealed class FinancialTrackingSqlTests
         return (T)(await command.ExecuteScalarAsync())!;
     }
 
-    private static string CsvCell(string text) => "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+    private static string CsvCell(string text)
+    {
+        return "\"" + text.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+    }
+
     private sealed record Activity(int Day, decimal Amount, string Type, string Description, string Id, string? Funding = null, string? Category = null);
 }

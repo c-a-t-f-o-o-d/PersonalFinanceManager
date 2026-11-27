@@ -340,6 +340,7 @@ namespace PersonalFinanceManager.App.UI.Views
             string prompt = string.Equals(item.Status, DuplicateReviewStatuses.ExactDuplicateSkipped, StringComparison.OrdinalIgnoreCase)
                 ? "Recover this exact-skipped row as a separate transaction? Confirm it is an additional real purchase or payment, not the same event imported twice."
                 : "Add this duplicate candidate as a real transaction?";
+
             DialogResult result = MessageBox.Show(this, prompt, "Accept duplicate", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
             if (result != DialogResult.Yes)
@@ -394,6 +395,7 @@ namespace PersonalFinanceManager.App.UI.Views
             }
 
             _resolvingCandidate = true;
+
             try
             {
                 await _duplicateReviewWorkflowService.IgnoreImportCandidateAsync(item.ImportRowId).ConfigureAwait(true);

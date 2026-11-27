@@ -48,6 +48,7 @@ namespace PersonalFinanceManager.Core.Imports
             }
 
             ImportOccurrenceIdentity identities = new();
+
             for (int index = 1; index < records.Count; index++)
             {
                 CsvRecord record = records[index];

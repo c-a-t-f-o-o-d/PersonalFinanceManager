@@ -5,11 +5,11 @@ namespace PersonalFinanceManager.Core.Imports;
 
 public sealed class PayPalStatementParser : ITransactionParser
 {
-    private static readonly Regex SplitYearPattern = new(@"(?<prefix>\d{2}/\d{2}/\d{3})\s+(?<suffix>\d)", RegexOptions.CultureInvariant);
-    private static readonly Regex DateHeaderPattern = new(@"(?m)^[ \t]*(?<date>\d{2}/\d{2}/\d{4})(?=\s|$)", RegexOptions.CultureInvariant);
-    private static readonly Regex TotalsPattern = new(@"\b(?<currency>USD|EUR|GBP|CAD|AUD|JPY|CHF|CNY|INR|MXN)\s+(?<amount>\S+)\s+(?<fees>\S+)\s+(?<total>\S+)", RegexOptions.CultureInvariant);
-    private static readonly Regex FundingPattern = new(@"(?m)^[ \t]*(?<source>[^\r\n]+?)[ \t]*(?:\n[ \t]*|[ \t]+)(?:(?<amount>[+-]?[\d,]+(?:\.\d{1,2})?)[ \t]*(?:\n[ \t]*|[ \t]+))?USD[ \t]*(?:\n[ \t]*|[ \t]+)ID:[ \t]*(?<id>[A-Za-z0-9]+)(?=\s|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    private static readonly Regex IdPattern = new(@"\bID:\s*(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex _splitYearPattern = new(@"(?<prefix>\d{2}/\d{2}/\d{3})\s+(?<suffix>\d)", RegexOptions.CultureInvariant);
+    private static readonly Regex _dateHeaderPattern = new(@"(?m)^[ \t]*(?<date>\d{2}/\d{2}/\d{4})(?=\s|$)", RegexOptions.CultureInvariant);
+    private static readonly Regex _totalsPattern = new(@"\b(?<currency>USD|EUR|GBP|CAD|AUD|JPY|CHF|CNY|INR|MXN)\s+(?<amount>\S+)\s+(?<fees>\S+)\s+(?<total>\S+)", RegexOptions.CultureInvariant);
+    private static readonly Regex _fundingPattern = new(@"(?m)^[ \t]*(?<source>[^\r\n]+?)[ \t]*(?:\n[ \t]*|[ \t]+)(?:(?<amount>[+-]?[\d,]+(?:\.\d{1,2})?)[ \t]*(?:\n[ \t]*|[ \t]+))?USD[ \t]*(?:\n[ \t]*|[ \t]+)ID:[ \t]*(?<id>[A-Za-z0-9]+)(?=\s|$)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex _idPattern = new(@"\bID:\s*(?<id>[A-Za-z0-9]+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     private readonly MinimalPdfTextExtractor _pdfTextExtractor = new();
 
     public string ProfileCode => ImportProfileCodes.PayPalStatement;
@@ -30,7 +30,7 @@ public sealed class PayPalStatementParser : ITransactionParser
         ParseResult result = new();
         result.Warnings.Add(new ParseError(0, "Imports purchase/account activity, not a complete PayPal balance ledger; do not use these rows alone for wallet balance reconciliation."));
         string section = GetAccountActivitySection(NormalizeText(text));
-        MatchCollection headers = DateHeaderPattern.Matches(section);
+        MatchCollection headers = _dateHeaderPattern.Matches(section);
         List<(ParsedTransaction Row, List<FundingDetail> Details, int IdCount)> rows = new();
 
         for (int index = 0; index < headers.Count; index++)
@@ -39,7 +39,8 @@ public sealed class PayPalStatementParser : ITransactionParser
             int end = index + 1 < headers.Count ? headers[index + 1].Index : section.Length;
             string block = section[(header.Index + header.Length)..end].Trim();
             int rowNumber = section[..header.Index].Count(character => character == '\n') + 1;
-            Match totals = TotalsPattern.Match(block);
+            Match totals = _totalsPattern.Match(block);
+
             if (!DateOnly.TryParseExact(header.Groups["date"].Value, "MM/dd/yyyy", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly date) ||
                 !totals.Success ||
                 !ImportAmountParser.TryParse(totals.Groups["amount"].Value, out decimal amount) ||
@@ -64,6 +65,7 @@ public sealed class PayPalStatementParser : ITransactionParser
 
             string sourceDescription = NormalizeWhitespace(block[..totals.Index]);
             (string type, string description, bool recognized) = NormalizeDescription(block[..totals.Index], total);
+
             if (string.IsNullOrWhiteSpace(description) || sourceDescription.Length > 1000)
             {
                 result.Errors.Add(new ParseError(rowNumber, "The PayPal transaction description is missing or exceeds 1,000 characters."));
@@ -82,6 +84,7 @@ public sealed class PayPalStatementParser : ITransactionParser
             }
 
             string tail = block[(totals.Index + totals.Length)..];
+
             ParsedTransaction transaction = new()
             {
                 RowNumber = rowNumber,
@@ -91,16 +94,25 @@ public sealed class PayPalStatementParser : ITransactionParser
                 Description = description,
                 Memo = sourceDescription
             };
-            List<FundingDetail> details = FundingPattern.Matches(tail).Select(match => new FundingDetail(
-                NormalizeWhitespace(match.Groups["source"].Value),
-                match.Groups["id"].Value,
-                ImportAmountParser.TryParse(match.Groups["amount"].Value, out decimal fundingAmount) ? fundingAmount : null)).ToList();
-            rows.Add((transaction, details, IdPattern.Matches(tail).Count));
+
+            List<FundingDetail> details = _fundingPattern
+                .Matches(tail)
+                .Select(match =>
+                    new FundingDetail(NormalizeWhitespace(
+                        match.Groups["source"].Value),
+                        match.Groups["id"].Value,
+                        ImportAmountParser.TryParse(match.Groups["amount"].Value,
+                        out decimal fundingAmount)? fundingAmount : null)
+                    )
+                .ToList();
+
+            rows.Add((transaction, details, _idPattern.Matches(tail).Count));
             result.Rows.Add(transaction);
         }
 
         AttachFunding(rows, result);
         ImportOccurrenceIdentity identities = new();
+
         foreach (ParsedTransaction row in result.Rows)
         {
             row.ExternalTransactionId ??= identities.Next("PAYPALSTATEMENT", row);
@@ -118,9 +130,11 @@ public sealed class PayPalStatementParser : ITransactionParser
     {
         bool hasEarlierInlineFunding = rows.Take(Math.Max(0, rows.Count - 1)).Any(row => row.Details.Count == 1 && row.IdCount == 1);
         bool detached = rows.Count > 1 && !hasEarlierInlineFunding;
+
         if (detached)
         {
             List<FundingDetail> details = rows.SelectMany(row => row.Details).ToList();
+
             foreach (FundingDetail detail in details)
             {
                 if (!detail.Amount.HasValue || result.Errors.Count > 0)
@@ -128,9 +142,12 @@ public sealed class PayPalStatementParser : ITransactionParser
                     continue;
                 }
 
-                List<ParsedTransaction> matches = rows.Select(row => row.Row).Where(row =>
-                    row.Amount < 0 && Math.Abs(row.Amount) == Math.Abs(detail.Amount.Value)).ToList();
+                List<ParsedTransaction> matches = rows
+                    .Select(row => row.Row)
+                    .Where(row => row.Amount < 0 && Math.Abs(row.Amount) == Math.Abs(detail.Amount.Value)).ToList();
+
                 int equalFundingAmounts = details.Count(other => other.Amount.HasValue && Math.Abs(other.Amount.Value) == Math.Abs(detail.Amount.Value));
+
                 if (matches.Count == 1 && equalFundingAmounts == 1)
                 {
                     Assign(matches[0], detail);
@@ -147,7 +164,8 @@ public sealed class PayPalStatementParser : ITransactionParser
 
         foreach (var row in rows)
         {
-            if (row.Details.Count == 1 && row.IdCount == 1 &&
+            if (row.Details.Count == 1 &&
+                row.IdCount == 1 &&
                 (!row.Details[0].Amount.HasValue || Math.Abs(row.Details[0].Amount!.Value) == Math.Abs(row.Row.Amount)))
             {
                 Assign(row.Row, row.Details[0]);
@@ -168,8 +186,9 @@ public sealed class PayPalStatementParser : ITransactionParser
     private static string NormalizeText(string text)
     {
         string normalized = text.Replace("\r\n", "\n", StringComparison.Ordinal).Replace('\r', '\n');
-        normalized = SplitYearPattern.Replace(normalized, match => match.Groups["prefix"].Value + match.Groups["suffix"].Value);
+        normalized = _splitYearPattern.Replace(normalized, match => match.Groups["prefix"].Value + match.Groups["suffix"].Value);
         normalized = Regex.Replace(normalized, @"(?m)^(?<date>[\dC]{2}/[\dC]{2}/[\dC]{4})(?=\s|$)", match => match.Value.Replace('C', '4'));
+
         normalized = normalized.Replace("PPYPPL", "PAYPAL", StringComparison.Ordinal)
             .Replace("PCCOUNc", "ACCOUNT", StringComparison.Ordinal)
             .Replace("PCcIeIcY", "ACTIVITY", StringComparison.Ordinal)
@@ -178,6 +197,7 @@ public sealed class PayPalStatementParser : ITransactionParser
             .Replace("Conntct", "Connect", StringComparison.Ordinal)
             .Replace("PrtPpprovts Paymtnt Bill Ustr Paymtnt", "PreApproved Payment Bill User Payment", StringComparison.Ordinal)
             .Replace("Buytr Crtsit Paymtnt", "Buyer Credit Payment", StringComparison.Ordinal);
+
         return Regex.Replace(normalized, @"[ \t]+", " ");
     }
 
@@ -187,9 +207,11 @@ public sealed class PayPalStatementParser : ITransactionParser
         int start = header.Success ? header.Index : text.IndexOf("ACCOUNT ACTIVITY", StringComparison.OrdinalIgnoreCase);
         start = Math.Max(0, start);
         int end = text.Length;
+
         foreach (string marker in new[] { "*For each transaction", "PAYPAL BALANCE ACCOUNT" })
         {
             int markerIndex = text.IndexOf(marker, start + 1, StringComparison.OrdinalIgnoreCase);
+
             if (markerIndex >= 0)
             {
                 end = Math.Min(end, markerIndex);
@@ -203,6 +225,7 @@ public sealed class PayPalStatementParser : ITransactionParser
     {
         string description = NormalizeWhitespace(text);
         const string preapproved = "PreApproved Payment Bill User Payment:";
+
         if (description.StartsWith(preapproved, StringComparison.OrdinalIgnoreCase))
         {
             return ("PreApproved Payment", description[preapproved.Length..].Trim(), amount <= 0);
@@ -236,11 +259,17 @@ public sealed class PayPalStatementParser : ITransactionParser
         return ("PayPal Unclassified", description, false);
     }
 
-    private static bool StartsWithDescriptor(string text, string descriptor) => text.Equals(descriptor, StringComparison.OrdinalIgnoreCase)
-        || text.StartsWith(descriptor + ":", StringComparison.OrdinalIgnoreCase)
-        || text.StartsWith(descriptor + " ", StringComparison.OrdinalIgnoreCase);
+    private static bool StartsWithDescriptor(string text, string descriptor)
+    {
+        return text.Equals(descriptor, StringComparison.OrdinalIgnoreCase) ||
+            text.StartsWith(descriptor + ":", StringComparison.OrdinalIgnoreCase) ||
+            text.StartsWith(descriptor + " ", StringComparison.OrdinalIgnoreCase);
+    }
 
-    private static string NormalizeWhitespace(string text) => Regex.Replace(text.Trim(), @"\s+", " ");
+    private static string NormalizeWhitespace(string text)
+    {
+        return Regex.Replace(text.Trim(), @"\s+", " ");
+    }
 
     private sealed record FundingDetail(string Source, string Id, decimal? Amount);
 }

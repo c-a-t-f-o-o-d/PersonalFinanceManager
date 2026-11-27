@@ -11,6 +11,7 @@ public static class ImportAmountParser
     public static bool TryParse(string? text, out decimal amount)
     {
         amount = 0;
+
         if (string.IsNullOrWhiteSpace(text))
         {
             return false;
@@ -18,6 +19,7 @@ public static class ImportAmountParser
 
         string value = text.Trim();
         bool parenthesized = value.StartsWith('(') && value.EndsWith(')');
+
         if (parenthesized)
         {
             value = value[1..^1].Trim();

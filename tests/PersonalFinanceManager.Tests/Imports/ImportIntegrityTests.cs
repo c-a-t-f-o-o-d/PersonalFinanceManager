@@ -126,7 +126,6 @@ public sealed class ImportIntegrityTests
         const string csv = "Date,Time,Amount,Type,Description\n2026-01-02,,-12.34,Withdrawal,SAMPLE STORE\n2026-01-02,,-12.34,Withdrawal,SAMPLE STORE\n";
         ParseResult first = new AllyTransactionParser().ParseText(csv);
         ParseResult repeated = new AllyTransactionParser().ParseText(csv);
-
         Assert.HasCount(2, first.Rows);
         Assert.AreNotEqual(first.Rows[0].ExternalTransactionId, first.Rows[1].ExternalTransactionId);
         Assert.AreEqual(first.Rows[0].ExternalTransactionId, repeated.Rows[0].ExternalTransactionId);
@@ -139,7 +138,6 @@ public sealed class ImportIntegrityTests
     {
         const string csv = "Date,Amount,Type,Description,Account,Transaction ID,Funding Source,Currency\n2026-04-01,-45.00,Purchase,SAMPLE STORE,PayPal Wallet,PP123,PayPal Smart Connect,USD\n";
         ParseResult result = new AccountActivityCsvParser().ParseText(csv);
-
         Assert.IsEmpty(result.Errors);
         Assert.HasCount(1, result.Rows);
         Assert.AreEqual("PayPal Wallet", result.Rows[0].SourceAccountIdentity);
@@ -153,7 +151,6 @@ public sealed class ImportIntegrityTests
     {
         const string csv = "Date,Amount,Type,Description\n2026-04-01,-45.00,Purchase,SAMPLE STORE\n2026-04-10,45.00,Payment,BANK PAYMENT\n2026-04-11,10.00,Refund,RETURN\n";
         ParseResult result = new PayPalSmartConnectCsvParser().ParseText(csv);
-
         Assert.IsEmpty(result.Errors);
         Assert.HasCount(3, result.Rows);
         Assert.AreEqual(-45m, result.Rows[0].Amount);
@@ -261,6 +258,13 @@ public sealed class ImportIntegrityTests
         Assert.HasCount(1, result.Errors);
     }
 
-    private static IReadOnlyList<ParseError> FundingWarnings(ParseResult result) => result.Warnings.Where(warning => warning.RowNumber > 0 && warning.Message.Contains("funding", StringComparison.OrdinalIgnoreCase)).ToArray();
-    private static string Statement(string activity) => "PAYPAL ACCOUNT\nACCOUNT ACTIVITY\nDATE DESCRIPTION CURRENCY AMOUNT FEES TOTAL*\n" + activity;
+    private static IReadOnlyList<ParseError> FundingWarnings(ParseResult result)
+    {
+        return result.Warnings.Where(warning => warning.RowNumber > 0 && warning.Message.Contains("funding", StringComparison.OrdinalIgnoreCase)).ToArray();
+    }
+
+    private static string Statement(string activity)
+    {
+        return "PAYPAL ACCOUNT\nACCOUNT ACTIVITY\nDATE DESCRIPTION CURRENCY AMOUNT FEES TOTAL*\n" + activity;
+    }
 }

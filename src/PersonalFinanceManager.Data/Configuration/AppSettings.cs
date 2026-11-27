@@ -28,7 +28,6 @@ namespace PersonalFinanceManager.Data.Configuration
         public string BackupFolder { get; set; } = string.Empty;
         public bool MaskAccountNumbers { get; set; } = true;
 
-
         public bool HasUsableConnectionString()
         {
             return !string.IsNullOrWhiteSpace(ConnectionString) && !ContainsPlaceholderSecret(ConnectionString);
@@ -69,10 +68,10 @@ namespace PersonalFinanceManager.Data.Configuration
                 return false;
             }
 
-            return connectionString.Contains("YOUR_SQL_SERVER_OR_IP", StringComparison.OrdinalIgnoreCase)
-                || connectionString.Contains("YOUR_SQL_LOGIN", StringComparison.OrdinalIgnoreCase)
-                || connectionString.Contains("YOUR_SQL_PASSWORD", StringComparison.OrdinalIgnoreCase)
-                || connectionString.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase);
+            return connectionString.Contains("YOUR_SQL_SERVER_OR_IP", StringComparison.OrdinalIgnoreCase) ||
+                connectionString.Contains("YOUR_SQL_LOGIN", StringComparison.OrdinalIgnoreCase) ||
+                connectionString.Contains("YOUR_SQL_PASSWORD", StringComparison.OrdinalIgnoreCase) ||
+                connectionString.Contains("CHANGE_ME", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

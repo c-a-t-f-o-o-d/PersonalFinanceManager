@@ -20,7 +20,12 @@ public sealed class ImportOccurrenceIdentity
             TextNormalizer.NormalizeForComparison(row.Type),
             TextNormalizer.NormalizeForComparison(row.Description),
             TextNormalizer.NormalizeForComparison(row.SourceAccountIdentity ?? string.Empty));
-        if (sourceDetails is not null) text += "|" + sourceDetails;
+
+        if (sourceDetails is not null)
+        {
+            text += "|" + sourceDetails;
+        }
+
         string fingerprint = source + ":" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32];
         _counts.TryGetValue(fingerprint, out int count);
         _counts[fingerprint] = ++count;

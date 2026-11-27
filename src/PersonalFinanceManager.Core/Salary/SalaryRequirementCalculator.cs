@@ -25,7 +25,11 @@ namespace PersonalFinanceManager.Core.Salary
 
             while (CalculateAnnualTakeHome(high, input) < targetAnnualTakeHome)
             {
-                if (high >= 1000000000000M) throw new ArgumentOutOfRangeException(nameof(input), "The requested salary is outside the supported planning range.");
+                if (high >= 1000000000000M)
+                {
+                    throw new ArgumentOutOfRangeException(nameof(input), "The requested salary is outside the supported planning range.");
+                }
+
                 high *= 1.5M;
             }
 
@@ -221,6 +225,7 @@ namespace PersonalFinanceManager.Core.Salary
             }
 
             decimal modeledSpouseWages = postedNet ? 0M : spouseGross;
+
             return new TaxComputation
             {
                 AnnualPreTaxDeductions = annualFederalOnlyDeductions + annualFicaExemptDeductions,
@@ -247,7 +252,7 @@ namespace PersonalFinanceManager.Core.Salary
             }
 
             int yourAllowances = Math.Max(0, input.YourLegacyAllowances);
-            int spouseAllowances = input.SpouseAnnualGrossIncome > 0M ? Math.Max(0, input.SpouseLegacyAllowances) : 0;
+            int spouseAllowances = input.FilingStatus == FilingStatus.MarriedFilingJointly && input.SpouseAnnualGrossIncome > 0M ? Math.Max(0, input.SpouseLegacyAllowances) : 0;
             return yourAllowances + spouseAllowances;
         }
 
@@ -293,9 +298,15 @@ namespace PersonalFinanceManager.Core.Salary
 
         private static void Validate(SalaryRequirementInput input)
         {
-            if (!Enum.IsDefined(input.SpouseIncomeMode)) throw new ArgumentOutOfRangeException(nameof(input.SpouseIncomeMode));
+            if (!Enum.IsDefined(input.SpouseIncomeMode))
+            {
+                throw new ArgumentOutOfRangeException(nameof(input.SpouseIncomeMode));
+            }
+
             if (input.SpouseIncomeMode == SpouseIncomeMode.EstimatedFromGross && input.SpouseAnnualGrossIncome > 0M && input.FilingStatus != FilingStatus.MarriedFilingJointly)
+            {
                 throw new ArgumentException("Spouse gross-income modeling requires Married Filing Jointly. Use posted net income for separate tax households.", nameof(input));
+            }
 
             if (input.TargetMonthlySpending < 0M)
             {

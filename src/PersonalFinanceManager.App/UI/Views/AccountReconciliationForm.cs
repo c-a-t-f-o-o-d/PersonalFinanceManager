@@ -36,13 +36,18 @@ namespace PersonalFinanceManager.App.UI.Views
             string balanceDescription = AccountClassification.IsLiability(account.AccountType)
                 ? "Enter balances owed as positive amounts. Purchases increase the balance; payments and refunds reduce it."
                 : "Enter the statement's posted balance, including negative balances. Transfers remain part of each account's activity.";
+
             if (AccountClassification.IsWallet(account.AccountType))
+            {
                 balanceDescription += " A complete wallet balance ledger is required; PayPal purchase/account-activity imports cannot verify a wallet balance.";
+            }
+
             Label help = new()
             {
                 Text = balanceDescription + " Opening balance is before the first date; closing balance is at the end of the last date. Posting dates are used when available. Checking a statement does not alter transactions or saved account balances.",
                 Dock = DockStyle.Fill
             };
+
             layout.Controls.Add(help, 0, 0);
             layout.SetColumnSpan(help, 2);
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 110));
@@ -63,6 +68,7 @@ namespace PersonalFinanceManager.App.UI.Views
             layout.Controls.Add(_history, 0, 7);
             layout.SetColumnSpan(_history, 2);
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+
             foreach ((string property, string header, string? format) in new (string, string, string?)[]
             {
                 ("RecordedAtUtc", "Recorded (UTC)", "g"), ("FromDate", "From", null), ("ToDate", "Through", null),
@@ -72,7 +78,9 @@ namespace PersonalFinanceManager.App.UI.Views
             {
                 _history.Columns.Add(new DataGridViewTextBoxColumn
                 {
-                    DataPropertyName = property, HeaderText = header, Width = property == "RecordedAtUtc" ? 160 : 110,
+                    DataPropertyName = property,
+                    HeaderText = header,
+                    Width = property == "RecordedAtUtc" ? 160 : 110,
                     DefaultCellStyle = new DataGridViewCellStyle { Format = format ?? string.Empty }
                 });
             }
@@ -81,6 +89,7 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+
             try
             {
                 _history.DataSource = await _service.GetStatementHistoryAsync(_account.AccountId);
@@ -95,6 +104,7 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             _check.Enabled = false;
             _record.Enabled = false;
+
             try
             {
                 AccountReconciliation result = await _service.CheckStatementAsync(new AccountReconciliationRequest
@@ -105,10 +115,12 @@ namespace PersonalFinanceManager.App.UI.Views
                     OpeningBalance = _opening.Value,
                     ClosingBalance = _closing.Value
                 }, record);
+
                 _result.ForeColor = result.IsBalanced ? Color.DarkGreen : Color.Firebrick;
                 _result.Text = $"{(result.IsBalanced ? "Balances match" : "Balance difference found")}. Calculated closing balance: {result.ExpectedClosingBalance:C2}; statement: {result.ClosingBalance:C2}; difference: {result.Difference:C2}.\n"
                     + $"Included {result.TransactionCount} account entries; {result.DateFallbackCount} use transaction date because no posting date was imported. "
                     + "A matching balance does not rule out offsetting missing entries. Recorded checks reflect the ledger at the time of the check.";
+
                 if (record)
                 {
                     _history.DataSource = await _service.GetStatementHistoryAsync(_account.AccountId);

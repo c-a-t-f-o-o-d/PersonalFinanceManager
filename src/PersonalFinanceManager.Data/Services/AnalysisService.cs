@@ -17,10 +17,14 @@ namespace PersonalFinanceManager.Data.Services
         }
 
         public Task<ExpenseReportResult> GetExpenseReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-            => _reportRepository.GetExpenseReportAsync(filter, cancellationToken);
+        {
+            return _reportRepository.GetExpenseReportAsync(filter, cancellationToken);
+        }
 
         public Task<CashFlowReportResult> GetCashFlowReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
-            => _reportRepository.GetCashFlowReportAsync(filter, cancellationToken);
+        {
+            return _reportRepository.GetCashFlowReportAsync(filter, cancellationToken);
+        }
 
         public Task<IReadOnlyList<Account>> GetAccountsAsync(CancellationToken cancellationToken = default)
         {

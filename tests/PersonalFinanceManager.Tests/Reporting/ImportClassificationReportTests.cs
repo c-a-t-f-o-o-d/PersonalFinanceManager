@@ -11,8 +11,11 @@ public sealed class ImportClassificationReportTests
     [TestMethod]
     public void UnknownCreditsRemainCashWithoutBecomingIncomeOrRefunds()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
-            [Row(1, -100m, "Purchase"), Row(2, 500m, ImportClassification.UnclassifiedCredit)] });
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions = [Row(1, -100m, "Purchase"), Row(2, 500m, ImportClassification.UnclassifiedCredit)]
+        });
+
         Assert.AreEqual(100m, calculator.Expenses(new()).Metrics.TotalExpenses);
         Assert.IsEmpty(calculator.Income(new()));
         Assert.AreEqual(500m, calculator.CashFlow(new()).Summary.TotalMoneyIn);
@@ -24,9 +27,11 @@ public sealed class ImportClassificationReportTests
     [TestMethod]
     public void ManualRefundAndIncomeDecisionsResolveClassification()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
-            [Row(1, -100m, "Purchase"), Row(2, 20m, "Refund", manual: true),
-             Row(3, 500m, ImportClassification.UnclassifiedCredit, income: true)] });
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions = [Row(1, -100m, "Purchase"), Row(2, 20m, "Refund", manual: true), Row(3, 500m, ImportClassification.UnclassifiedCredit, income: true)]
+        });
+
         Assert.AreEqual(80m, calculator.Expenses(new()).Metrics.TotalExpenses);
         Assert.AreEqual(500m, calculator.Income(new()).Single().TotalNetIncome);
         Assert.IsEmpty(calculator.Expenses(new()).Warnings);
@@ -36,8 +41,11 @@ public sealed class ImportClassificationReportTests
     [TestMethod]
     public void CategoryOnlyEditsCannotTurnUnknownCreditsIntoRefunds()
     {
-        FinancialReportCalculator calculator = new(new ReportData { Transactions =
-            [Row(1, -100m, "Purchase"), Row(2, 500m, ImportClassification.UnclassifiedCredit, manual: true)] });
+        FinancialReportCalculator calculator = new(new ReportData
+        {
+            Transactions = [Row(1, -100m, "Purchase"), Row(2, 500m, ImportClassification.UnclassifiedCredit, manual: true)]
+        });
+
         Assert.AreEqual(100m, calculator.Expenses(new()).Metrics.TotalExpenses);
         Assert.IsEmpty(calculator.Income(new()));
         Assert.IsTrue(calculator.NeedsClassificationReview(2));
@@ -50,9 +58,9 @@ public sealed class ImportClassificationReportTests
         ReportData data = new()
         {
             Transactions = [Row(1, -100m, "Purchase"), Row(2, 50m, ImportClassification.UnclassifiedCredit)],
-            Links = [new TransactionLinkRecord { TransactionLinkId = 1, SourceTransactionId = 2, LinkedTransactionId = 1,
-                LinkType = TransactionLinkTypes.PurchaseRefund, AllocationAmount = 20m }]
+            Links = [new TransactionLinkRecord { TransactionLinkId = 1, SourceTransactionId = 2, LinkedTransactionId = 1, LinkType = TransactionLinkTypes.PurchaseRefund, AllocationAmount = 20m }]
         };
+
         FinancialReportCalculator calculator = new(data);
         Assert.AreEqual(80m, calculator.Expenses(new()).Metrics.TotalExpenses);
         Assert.IsTrue(calculator.NeedsClassificationReview(2));
@@ -66,8 +74,11 @@ public sealed class ImportClassificationReportTests
     [TestMethod]
     public void UnclassifiedDebitsRemainVisibleButDoNotCreateRecurringBillSuggestions()
     {
-        ReportData data = new() { Transactions = Enumerable.Range(1, 3)
-            .Select(id => Row(id, -100m, ImportClassification.UnclassifiedDebit)).ToArray() };
+        ReportData data = new()
+        {
+            Transactions = Enumerable.Range(1, 3).Select(id => Row(id, -100m, ImportClassification.UnclassifiedDebit)).ToArray()
+        };
+
         FinancialReportCalculator calculator = new(data);
         Assert.AreEqual(300m, calculator.Expenses(new()).Metrics.TotalExpenses);
         Assert.IsFalse(calculator.SalarySpending(new()).CanEstimate);
@@ -76,8 +87,18 @@ public sealed class ImportClassificationReportTests
 
     private static ReportTransaction Row(long id, decimal amount, string type, bool manual = false, bool income = false) => new()
     {
-        Id = id, AccountId = 1, AccountNickname = "Example Checking", AccountType = "Checking",
-        Date = new DateOnly(2026, (int)id, 12), Amount = amount, Type = type, Description = "Example activity",
-        Category = "Shopping", SpendingClass = "Shopping", ClassificationIsManual = manual, IsIncome = income, IncomeOwner = OwnerValues.Me
+        Id = id,
+        AccountId = 1,
+        AccountNickname = "Example Checking",
+        AccountType = "Checking",
+        Date = new DateOnly(2026, (int)id, 12),
+        Amount = amount,
+        Type = type,
+        Description = "Example activity",
+        Category = "Shopping",
+        SpendingClass = "Shopping",
+        ClassificationIsManual = manual,
+        IsIncome = income,
+        IncomeOwner = OwnerValues.Me
     };
 }

@@ -19,6 +19,7 @@ namespace PersonalFinanceManager.Data.Sql
             {
                 SqlConnectionStringBuilder builder = new(_connectionString);
                 string name = builder.InitialCatalog;
+
                 if (string.IsNullOrWhiteSpace(name) || name.Length > 128)
                 {
                     throw new InvalidOperationException("The connection string must specify a database name of at most 128 characters.");

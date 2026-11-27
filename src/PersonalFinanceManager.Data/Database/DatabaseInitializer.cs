@@ -25,7 +25,6 @@ namespace PersonalFinanceManager.Data.Database
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await EnsureMigrationTrackingTableAsync(connection, cancellationToken).ConfigureAwait(false);
-
             HashSet<string> appliedScriptNames = await GetAppliedScriptNamesAsync(connection, cancellationToken).ConfigureAwait(false);
             HashSet<string> appliedSchemaVersions = await GetAppliedSchemaVersionsAsync(connection, cancellationToken).ConfigureAwait(false);
 
@@ -178,9 +177,7 @@ namespace PersonalFinanceManager.Data.Database
                 await existingConnection.OpenAsync(cancellationToken).ConfigureAwait(false);
                 return;
             }
-            catch (SqlException)
-            {
-            }
+            catch (SqlException) { }
 
             await using SqlConnection connection = _connectionFactory.CreateMasterConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);

@@ -182,6 +182,7 @@ namespace PersonalFinanceManager.App.UI.Views
             _incomeOwner.Text = Transaction.IncomeOwner ?? string.Empty;
             _isTransfer.Checked = Transaction.IsTransfer && !Transaction.LegacyLinkTreatment;
             _isManual.Checked = Transaction.ImportedTransactionId == 0 || Transaction.IsManual;
+            _preserveClassification.Checked = Transaction.ClassificationIsManual;
             _notes.Text = Transaction.Notes ?? string.Empty;
         }
 

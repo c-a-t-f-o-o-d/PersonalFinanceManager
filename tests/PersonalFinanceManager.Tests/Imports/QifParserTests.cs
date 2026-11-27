@@ -26,8 +26,10 @@ public sealed class QifParserTests
         ParseResult result = new QifParser().ParseText("!Account\nNExample Checking\nTBank\n^\n!Type:Bank\n");
         Assert.IsEmpty(result.Errors);
         Assert.AreEqual("BANK", result.SourceAccountType);
+
         Assert.ThrowsExactly<InvalidOperationException>(() => ImportAccountValidation.Validate(
             new Account { AccountNickname = "Different Checking", AccountType = "Checking" }, ImportProfileCodes.Qif, result));
+
         ImportAccountValidation.Validate(new Account { AccountNickname = "Example Checking", AccountType = "Checking" }, ImportProfileCodes.Qif, result);
     }
 
@@ -52,8 +54,7 @@ public sealed class QifParserTests
         Assert.AreEqual("Transfer", result.Rows[0].SourceCategory);
         Assert.AreEqual(ImportClassification.UnclassifiedCredit, result.Rows[1].Type);
         Assert.IsTrue(result.Warnings.Any(warning => warning.RowNumber == result.Rows[1].RowNumber));
-        Assert.ThrowsExactly<InvalidOperationException>(() => ImportAccountValidation.Validate(
-            new Account { AccountNickname = "Example Checking", AccountType = "Checking" }, ImportProfileCodes.Qif, result));
+        Assert.ThrowsExactly<InvalidOperationException>(() => ImportAccountValidation.Validate(new Account { AccountNickname = "Example Checking", AccountType = "Checking" }, ImportProfileCodes.Qif, result));
     }
 
     [TestMethod]
@@ -73,10 +74,16 @@ public sealed class QifParserTests
         ParseResult result = new QifParser().ParseText("!Type:Bank\nD4/1/2026\nT250\nPOpening Balance\nL[Example Checking]\n^\nD4/2/2026\nT-10\nPExample purchase\n^\n");
         Assert.AreEqual(-10m, result.Rows.Single().Amount);
         Assert.IsTrue(result.Warnings.Any(warning => warning.Message.Contains("opening-balance initializer", StringComparison.Ordinal)));
+
         AccountReconciliation check = AccountReconciliationCalculator.Calculate(new AccountReconciliationRequest
         {
-            AccountId = 1, FromDate = new(2026, 4, 1), ToDate = new(2026, 4, 30), OpeningBalance = 250m, ClosingBalance = 240m
+            AccountId = 1,
+            FromDate = new(2026, 4, 1),
+            ToDate = new(2026, 4, 30),
+            OpeningBalance = 250m,
+            ClosingBalance = 240m
         }, "Checking", result.Rows.Select(row => new ImportedTransaction { AccountId = 1, TransactionDate = row.Date, Amount = row.Amount }));
+
         Assert.IsTrue(check.IsBalanced);
     }
 
@@ -99,6 +106,7 @@ public sealed class QifParserTests
     public void UnsupportedOrTruncatedSectionsRejectTheWholeFile()
     {
         const string valid = "!Type:Bank\nD4/12/2026\nT-1\nPExample store\n^\n";
+
         foreach (string suffix in new[] { "!Type:Invst\n", "!Type:Bank\n", "!Account\nNAnother\nTBank\n^\n", "D4/13/2026\nT-2\n" })
         {
             ParseResult result = new QifParser().ParseText(valid + suffix);

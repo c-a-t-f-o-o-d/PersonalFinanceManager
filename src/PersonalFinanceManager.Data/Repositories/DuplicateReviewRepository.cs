@@ -35,9 +35,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("DuplicateReview/ScanCrossAccountDuplicates.sql");
-
             return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -223,9 +221,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("DuplicateReview/UpdateCrossAccountStatus.sql");
-
             command.Parameters.Add(SqlParameters.NVarChar("@Status", status, 30));
             command.Parameters.Add(SqlParameters.BigInt("@CrossAccountDuplicateReviewId", crossAccountDuplicateReviewId));
             int affected = await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -246,9 +242,7 @@ namespace PersonalFinanceManager.Data.Repositories
             {
                 await using SqlCommand select = connection.CreateCommand();
                 select.Transaction = transaction;
-
                 select.CommandText = _sqlResources.Read("DuplicateReview/GetCrossAccountTransactionIds.sql");
-
                 select.Parameters.Add(SqlParameters.BigInt("@CrossAccountDuplicateReviewId", crossAccountDuplicateReviewId));
                 long? candidateId;
                 long? existingId;
@@ -286,9 +280,7 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("Transactions/DeleteTransaction.sql");
-
             command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -298,9 +290,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
 
-            command.CommandText = _sqlResources.Read(deletedCandidate
-                ? "DuplicateReview/MarkCrossAccountCandidateDeleted.sql"
-                : "DuplicateReview/MarkCrossAccountExistingDeleted.sql");
+            command.CommandText = _sqlResources.Read(deletedCandidate ? "DuplicateReview/MarkCrossAccountCandidateDeleted.sql" : "DuplicateReview/MarkCrossAccountExistingDeleted.sql");
 
             command.Parameters.Add(SqlParameters.BigInt("@CrossAccountDuplicateReviewId", crossAccountDuplicateReviewId));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -376,9 +366,7 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("DuplicateReview/GetCandidateImportRow.sql");
-
             command.Parameters.Add(SqlParameters.BigInt("@ImportRowId", importRowId));
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
@@ -429,9 +417,7 @@ namespace PersonalFinanceManager.Data.Repositories
             string rowHash = BuildRowHash(candidate);
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("DuplicateReview/InsertApprovedTransaction.sql");
-
             command.Parameters.Add(SqlParameters.Int("@AccountId", candidate.AccountId));
             command.Parameters.Add(SqlParameters.BigInt("@ImportBatchId", candidate.ImportBatchId));
             command.Parameters.Add(SqlParameters.Date("@TransactionDate", candidate.TransactionDate));
@@ -461,13 +447,12 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("DuplicateReview/UpdateImportRowStatus.sql");
-
             command.Parameters.Add(SqlParameters.NVarChar("@Status", status, 30));
             command.Parameters.Add(SqlParameters.NVarChar("@Note", note, 1000));
             command.Parameters.Add(SqlParameters.BigInt("@ImportRowId", importRowId));
             command.Parameters.Add(SqlParameters.BigInt("@AcceptedTransactionId", acceptedTransactionId));
+
             if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
             {
                 throw new InvalidOperationException("The duplicate candidate was resolved by another operation.");
@@ -478,9 +463,7 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
-
             command.CommandText = _sqlResources.Read("DuplicateReview/UpdateImportBatchCounts.sql");
-
             command.Parameters.Add(SqlParameters.BigInt("@ImportBatchId", importBatchId));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
@@ -544,9 +527,10 @@ namespace PersonalFinanceManager.Data.Repositories
             return candidate.Amount > 0 && !InferTransfer(candidate);
         }
 
-        private static bool IsRecoverableCandidate(string status) =>
-            string.Equals(status, "DuplicateReview", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(status, "ExactDuplicateSkipped", StringComparison.OrdinalIgnoreCase);
+        private static bool IsRecoverableCandidate(string status)
+        {
+            return string.Equals(status, "DuplicateReview", StringComparison.OrdinalIgnoreCase) || string.Equals(status, "ExactDuplicateSkipped", StringComparison.OrdinalIgnoreCase);
+        }
 
         private static bool InferTransfer(CandidateImportRow candidate)
         {

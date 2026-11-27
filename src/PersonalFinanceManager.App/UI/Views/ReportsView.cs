@@ -455,11 +455,13 @@ namespace PersonalFinanceManager.App.UI.Views
         private async Task RefreshReportsAsync()
         {
             ExpenseReportFilter filter = BuildFilter();
+
             if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
             {
                 MessageBox.Show(this, "The start date must be on or before the end date.", "Expense Analysis", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+
             ExpenseReportResult report = await _analysisService.GetExpenseReportAsync(filter).ConfigureAwait(true);
             ExpenseMetricSummary metrics = report.Metrics;
             IReadOnlyList<ExpenseSummaryItem> summary = report.Summary;
@@ -472,7 +474,8 @@ namespace PersonalFinanceManager.App.UI.Views
             UpdateMetrics(metrics, summary, monthly, report.Period);
             _reviewNotes.Lines = report.Warnings.Append(report.Period.CoverageNote).ToArray();
             _periodLabel.ForeColor = report.Warnings.Count > 0 ? Color.DarkOrange : UiTheme.TextSecondary;
-            if (report.Warnings.Count > 0) _periodLabel.Text = "Transaction relationships require review; totals include unresolved entries. See Review notes.";
+            if (report.Warnings.Count > 0)
+                _periodLabel.Text = "Transaction relationships require review; totals include unresolved entries. See Review notes.";
             _pieChart.SetData(summary);
             _monthlyChart.SetData(monthly);
         }
@@ -496,7 +499,6 @@ namespace PersonalFinanceManager.App.UI.Views
             decimal total = metrics.TotalExpenses;
             decimal months = period.MonthEquivalent;
             int days = period.DayCount;
-
             ExpenseSummaryItem? topCategory = summary.OrderByDescending(item => item.TotalAmount).FirstOrDefault();
             MonthlyExpenseTotalItem? topMonth = monthly.OrderByDescending(item => item.TotalAmount).FirstOrDefault();
             _totalExpensesMetric.Text = period.HasObservedTransactions ? total.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
@@ -616,7 +618,6 @@ namespace PersonalFinanceManager.App.UI.Views
                 int pieDiameter = Math.Min(Math.Max(300, Height - 10), availablePieWidth);
                 pieDiameter = Math.Max(280, pieDiameter);
                 Rectangle pieBounds = new(10, Math.Max(4, (Height - pieDiameter) / 2), pieDiameter, pieDiameter);
-
                 List<SliceLabel> labels = new();
                 float start = -90F;
                 using Pen separator = new(Color.White, 2F);
@@ -640,9 +641,18 @@ namespace PersonalFinanceManager.App.UI.Views
             private static IReadOnlyList<ExpenseSummaryItem> BuildDisplayItems(IReadOnlyList<ExpenseSummaryItem> sourceItems)
             {
                 decimal positiveTotal = sourceItems.Where(item => item.TotalAmount > 0M).Sum(item => item.TotalAmount);
-                List<ExpenseSummaryItem> orderedItems = sourceItems.Where(item => item.TotalAmount > 0M).OrderByDescending(item => item.TotalAmount)
-                    .Select(item => new ExpenseSummaryItem { GroupName = item.GroupName, TotalAmount = item.TotalAmount, TransactionCount = item.TransactionCount,
-                        PercentOfTotal = positiveTotal > 0M ? decimal.Round(item.TotalAmount / positiveTotal * 100M, 2, MidpointRounding.AwayFromZero) : 0M }).ToList();
+
+                List<ExpenseSummaryItem> orderedItems = sourceItems
+                    .Where(item => item.TotalAmount > 0M)
+                    .OrderByDescending(item => item.TotalAmount)
+                    .Select(item => new ExpenseSummaryItem
+                    {
+                        GroupName = item.GroupName,
+                        TotalAmount = item.TotalAmount,
+                        TransactionCount = item.TransactionCount,
+                        PercentOfTotal = positiveTotal > 0M ? decimal.Round(item.TotalAmount / positiveTotal * 100M, 2, MidpointRounding.AwayFromZero) : 0M
+                    })
+                    .ToList();
 
                 if (orderedItems.Count <= _maxLegendSlices)
                 {

@@ -167,7 +167,6 @@ namespace PersonalFinanceManager.App.UI.Views
             ImportSummary summary = await _importWorkflowService.PreviewAsync(accountId, profileCode, path).ConfigureAwait(true);
             _bindingSource.DataSource = summary.PreviewRows;
             _summary.Text = $"Profile: {profileCode}. Preview rows: {summary.ParsedRows}. Parse errors: {summary.ErrorRows}.";
-
             AppendParseMessages(summary);
         }
 
@@ -193,8 +192,8 @@ namespace PersonalFinanceManager.App.UI.Views
                 $"Internal transfer links: {summary.BankTransferLinks}{Environment.NewLine}" +
                 $"Same file previously imported to this account: {summary.FileHashPreviouslyImported}{Environment.NewLine}" +
                 "Use Transaction Links to reconcile combined wallet funding or statements without matching account references.";
-            AppendParseMessages(summary);
 
+            AppendParseMessages(summary);
             _bindingSource.DataSource = Array.Empty<ImportedTransaction>();
         }
 
@@ -219,9 +218,14 @@ namespace PersonalFinanceManager.App.UI.Views
         private void AppendParseMessages(ImportSummary summary)
         {
             foreach (var error in summary.ParseErrors)
+            {
                 _summary.AppendText($"{Environment.NewLine}Error, row {error.RowNumber}: {error.Message}");
+            }
+
             foreach (var warning in summary.ParseWarnings)
+            {
                 _summary.AppendText($"{Environment.NewLine}Review, row {warning.RowNumber}: {warning.Message}");
+            }
         }
 
         private bool ValidateInputs(out int accountId, out string profileCode, out string path)

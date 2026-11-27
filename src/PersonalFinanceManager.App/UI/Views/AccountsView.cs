@@ -49,6 +49,7 @@ namespace PersonalFinanceManager.App.UI.Views
             refresh.Click += async (_, _) => await LoadAccountsAsync().ConfigureAwait(true);
             commands.Controls.Add(refresh);
             Button reconcile = new() { Text = "Reconcile Statement", Width = 160 };
+
             reconcile.Click += (_, _) =>
             {
                 if (_bindingSource.Current is Account account)
@@ -57,6 +58,7 @@ namespace PersonalFinanceManager.App.UI.Views
                     form.ShowDialog(this);
                 }
             };
+
             commands.Controls.Add(reconcile);
             _grid.Dock = DockStyle.Fill;
             _grid.AutoGenerateColumns = false;

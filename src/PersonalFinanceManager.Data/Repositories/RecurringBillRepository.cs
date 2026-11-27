@@ -21,9 +21,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("RecurringBills/GetBills.sql");
-
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -39,9 +37,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("RecurringBills/GetBillById.sql");
-
             command.Parameters.Add(SqlParameters.Int("@RecurringBillId", recurringBillId));
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? MapBill(reader) : null;
@@ -101,9 +97,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("RecurringBills/GetRequirementTypes.sql");
-
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -122,9 +116,7 @@ namespace PersonalFinanceManager.Data.Repositories
         private async Task<int> InsertAsync(SqlConnection connection, RecurringBill bill, CancellationToken cancellationToken)
         {
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("RecurringBills/InsertBill.sql");
-
             AddParameters(command, bill);
             object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return Convert.ToInt32(value);
@@ -133,9 +125,7 @@ namespace PersonalFinanceManager.Data.Repositories
         private async Task UpdateAsync(SqlConnection connection, RecurringBill bill, CancellationToken cancellationToken)
         {
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("RecurringBills/UpdateBill.sql");
-
             AddParameters(command, bill);
             command.Parameters.Add(SqlParameters.Int("@RecurringBillId", bill.RecurringBillId));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);

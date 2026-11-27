@@ -34,9 +34,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("DataHealth/SyncTransactionOwnersFromAccounts.sql");
-
             return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -51,7 +49,6 @@ namespace PersonalFinanceManager.Data.Repositories
 
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
             return await QueryAsync(connection, _sqlResources.Read(resourcePath), cancellationToken).ConfigureAwait(false);
         }
 

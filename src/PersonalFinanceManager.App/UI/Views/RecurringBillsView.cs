@@ -309,7 +309,6 @@ namespace PersonalFinanceManager.App.UI.Views
             }
 
             RecurringBill bill = RecurringBillCandidateDetector.CreateDraft(candidate, DateOnly.FromDateTime(DateTime.Today));
-
             using RecurringBillEditForm form = new(bill, _accounts, _categories, _categoryTypes, _requirementTypes);
 
             if (form.ShowDialog(this) == DialogResult.OK)

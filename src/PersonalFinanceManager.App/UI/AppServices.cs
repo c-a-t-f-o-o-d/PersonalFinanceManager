@@ -16,7 +16,6 @@ namespace PersonalFinanceManager.App.UI
             Settings = settings;
             Logger = logger;
             ConnectionFactory = new SqlConnectionFactory(settings.ConnectionString);
-
             AccountDataProtector dataProtector = new();
             AccountRepository accountRepository = new(ConnectionFactory, dataProtector);
             RuleRepository ruleRepository = new(ConnectionFactory);
@@ -26,13 +25,11 @@ namespace PersonalFinanceManager.App.UI
             DataHealthRepository dataHealthRepository = new(ConnectionFactory);
             ReportRepository reportRepository = new(ConnectionFactory);
             RecurringBillRepository recurringBillRepository = new(ConnectionFactory);
-
             DatabaseInitializer = new DatabaseInitializer(ConnectionFactory, logger);
             SchemaStatusService = new SchemaStatusService(ConnectionFactory);
             DatabaseBackupService = new DatabaseBackupService(ConnectionFactory);
             DemoDataService = new DemoDataService(ConnectionFactory);
             ImportService importService = new(ConnectionFactory, ruleRepository);
-
             AnalysisService = new AnalysisService(accountRepository, reportRepository);
             AccountWorkflowService = new AccountWorkflowService(accountRepository, new AccountReconciliationRepository(ConnectionFactory));
             RuleWorkflowService = new RuleWorkflowService(ruleRepository, importService);

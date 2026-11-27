@@ -98,6 +98,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
             root.Controls.Add(buttons, 0, 1);
             Button save = new() { Text = "Save", Width = 100 };
+
             save.Click += (_, _) =>
             {
                 try
@@ -112,6 +113,7 @@ namespace PersonalFinanceManager.App.UI.Views
                     MessageBox.Show(this, ex.Message, "Account", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 }
             };
+
             buttons.Controls.Add(save);
             Button cancel = new() { Text = "Cancel", DialogResult = DialogResult.Cancel, Width = 100 };
             buttons.Controls.Add(cancel);
