@@ -60,6 +60,11 @@ namespace PersonalFinanceManager.Data.Repositories
             return new[]
             {
                 new DataHealthCheckDefinition(
+                    DataHealthIssueCodes.ImportClassificationReview,
+                    "Imports", "Warning", "Imported activity needs financial classification",
+                    "Open Transactions and confirm whether each entry is income, a refund, an expense, or a transfer. Set its type and financial flags after checking the statement. A category change alone does not establish the financial treatment of an unclassified credit.",
+                    "DataHealth/Counts/ImportClassificationReview.sql"),
+                new DataHealthCheckDefinition(
                     DataHealthIssueCodes.LegacyLinkReview,
                     "Reconciliation", "Warning", "Earlier transaction matches require confirmation",
                     "Open Transaction Links and filter ManualReview. Verify the two statements and restore the appropriate relationship or delete the match. Unconfirmed entries remain visible in spending; reconcile them before relying on totals.",
@@ -137,6 +142,7 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             return issueCode switch
             {
+                DataHealthIssueCodes.ImportClassificationReview => "DataHealth/Details/ImportClassificationReview.sql",
                 DataHealthIssueCodes.LegacyLinkReview => "DataHealth/Details/LegacyLinkReview.sql",
                 DataHealthIssueCodes.BalanceSnapshotDate => "DataHealth/Details/BalanceSnapshotDate.sql",
                 DataHealthIssueCodes.LegacyLinkTreatment => "DataHealth/Details/LegacyLinkTreatment.sql",

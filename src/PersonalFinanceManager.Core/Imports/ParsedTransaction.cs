@@ -33,6 +33,9 @@ namespace PersonalFinanceManager.Core.Imports
 
     public sealed class ParseResult
     {
+        public string? SourceAccountIdentity { get; set; }
+        public string? SourceAccountType { get; set; }
+        public string? Currency { get; set; }
         public List<ParsedTransaction> Rows { get; } = new();
         public List<ParseError> Errors { get; } = new();
         public List<ParseError> Warnings { get; } = new();

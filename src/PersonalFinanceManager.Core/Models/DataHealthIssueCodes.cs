@@ -2,6 +2,7 @@ namespace PersonalFinanceManager.Core.Models
 {
     public static class DataHealthIssueCodes
     {
+        public const string ImportClassificationReview = "ImportClassificationReview";
         public const string BalanceSnapshotDate = "BalanceSnapshotDate";
         public const string LegacyLinkReview = "LegacyLinkReview";
         public const string LegacyLinkTreatment = "LegacyLinkTreatment";

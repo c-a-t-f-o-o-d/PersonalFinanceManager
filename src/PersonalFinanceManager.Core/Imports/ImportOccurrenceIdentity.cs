@@ -9,7 +9,7 @@ public sealed class ImportOccurrenceIdentity
 {
     private readonly Dictionary<string, int> _counts = new(StringComparer.Ordinal);
 
-    public string Next(string source, ParsedTransaction row)
+    public string Next(string source, ParsedTransaction row, string? sourceDetails = null)
     {
         string text = string.Join("|",
             source,
@@ -20,6 +20,7 @@ public sealed class ImportOccurrenceIdentity
             TextNormalizer.NormalizeForComparison(row.Type),
             TextNormalizer.NormalizeForComparison(row.Description),
             TextNormalizer.NormalizeForComparison(row.SourceAccountIdentity ?? string.Empty));
+        if (sourceDetails is not null) text += "|" + sourceDetails;
         string fingerprint = source + ":" + Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..32];
         _counts.TryGetValue(fingerprint, out int count);
         _counts[fingerprint] = ++count;

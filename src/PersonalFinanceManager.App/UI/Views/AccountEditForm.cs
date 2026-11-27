@@ -44,7 +44,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 Field.Text("Institution", "Institution"),
                 Field.Text("BaseUrl", "Base URL"),
                 Field.Text("AccountSummaryUrl", "Account Summary URL"),
-                Field.Combo("AccountType", "Account Type", new[] { "Checking", "Savings", "Cash", "Money Market", "PayPal", "Apple Cash", "Credit Card", "PayPal Smart Connect", "PayPal Credit", "Mortgage", "Vehicle Loan", "Personal Loan", "Investment", "401k", "IRA", "Other" }),
+                Field.Combo("AccountType", "Account Type", new[] { "Checking", "Savings", "Cash", "Money Market", "Digital Wallet", "Credit Card", "Line of Credit", "Mortgage", "Vehicle Loan", "Personal Loan", "Investment", "401k", "IRA", "Other" }),
                 Field.Combo("AccountOwner", "Account Owner", OwnerValues.All),
                 Field.Text("AccountNumber", "Account Number")
             });

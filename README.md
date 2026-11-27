@@ -10,9 +10,9 @@ The project is intentionally self-hosted. Your database is under your control, a
 - SQL Server-backed data store with LocalDB setup for local evaluation.
 - ADO.NET data access using `Microsoft.Data.SqlClient`; no Entity Framework dependency.
 - User-defined transaction rules with direction-aware matching.
-- Import support for multiple CSV/PDF-text export styles.
+- Import support for standard financial files, provider CSV exports, and normalized activity CSV.
 - Duplicate-review workflow for overlapping imports.
-- Transaction-link workflow for transfers, PayPal funding, and credit-card payments.
+- Transaction-link workflow for account transfers, wallet funding, and credit-card payments.
 - Statement balance reconciliation that retains every imported account entry.
 - Expense analysis with category and category-type breakdowns.
 - Money-in / money-out analysis.
@@ -125,7 +125,7 @@ See `DEMO_WORKFLOW.md` for a reviewer-friendly walkthrough.
 
 ### Accounts
 
-Accounts store institution details, account type, owner, balance fields, a balance-as-of date, interest/APR fields, due dates, payment amounts, and optional protected account-number data. Use separate accounts for a PayPal wallet and PayPal Credit or Smart Connect: a wallet holds cash, while a credit account holds debt. Apple Pay is a payment method; Apple Cash is a cash account, and Apple Card is a credit account.
+Accounts store institution details, account type, owner, balance fields, a balance-as-of date, interest/APR fields, due dates, payment amounts, and optional protected account-number data. Keep cash wallets and related credit facilities in separate accounts: a wallet holds cash, while a credit account holds debt. A payment method that uses an existing bank or card account does not create another balance to track.
 
 Account balances are entered snapshots. Importing transactions does not update them. Runway uses available balance before current balance, retains overdrafts, and excludes credit limits and loan balances from spendable cash.
 
@@ -133,38 +133,19 @@ Select an account and choose **Reconcile Statement** to compare its opening bala
 
 ### Imports
 
-PersonalFinanceManager provides parsers for these export formats:
+Import downloaded files into the account they describe. The application reads local exports; it does not sign in to financial institutions or synchronize accounts. Choose a profile by the file's actual format:
 
-- Ally transaction CSV exports
-- PayPal statement PDF/text exports
-- Chase / Amazon credit-card CSV exports
-- Apple Card CSV exports
-- Regions checking and savings CSV exports
-- Normalized bank, wallet, or card activity CSV, including a separate normalized Smart Connect profile
+- **Standard formats:** OFX/QFX bank and credit-card statements, and QIF bank/cash/credit-card activity within the documented USD and date-format boundaries.
+- **Provider formats:** dedicated parsers for six provider CSV layouts and one PDF/text activity layout, with exact headers and limitations listed in the import guide.
+- **Normalized CSV:** a documented USD format for prepared bank, wallet, or credit-account activity from other providers.
 
-Native provider formats can vary. Preview each import and review parser errors before saving. PayPal PDF/text parsing keeps each transaction bounded to its own record. If a detached funding section cannot be associated unambiguously, the economic transactions remain available and the preview reports missing funding metadata. Supply a normalized CSV when the native layout cannot preserve those relationships reliably.
+The [import guide and provider export reference](IMPORTS.md) covers 40 institutions and products across banks, credit unions, card issuers, and wallets. It documents each profile, required columns, currency and account checks, format limitations, and official export instructions. An institution's presence in the reference does not imply a dedicated importer. Preview each file and resolve errors or missing activity before relying on its totals.
 
-The PayPal PDF/text profile imports its **account activity** section, which is not a proven complete PayPal balance ledger. Direct bank/card-funded purchases may lack offsetting wallet funding credits. Wallet balance checks refuse periods containing this profile; reconcile the funding accounts, or import a complete normalized wallet balance ledger into a separate account and reconcile duplicate purchase representations explicitly. Unsupported or ambiguous positive PayPal transaction types are reported as parse errors rather than guessed as income or refunds.
+Ambiguous posted activity is retained for classification. Unclassified credits remain in account activity but are excluded from income and refunds; unclassified debits remain visible in spending. Transactions and Data Health identify these entries for review before financial estimates can be relied on.
 
 Import every account's statement into that account. Matching entries on different providers are retained for reconciliation. Exact repeated rows can be skipped automatically; **Duplicate Review** also exposes exact skips so a legitimate repeat purchase can be recovered. Equal amounts and nearby dates alone do not prove a duplicate or a transfer. Reimporting a file checks its individual rows; a recognized previously deleted source entry goes to Duplicate Review before restoration.
 
-#### Normalized CSV contract
-
-Choose **Normalized Bank / Wallet / Card CSV** for a provider without a supported native parser, or **PayPal Smart Connect (normalized CSV)** for prepared Smart Connect activity. The latter does not claim support for an undocumented native Smart Connect export format.
-
-Required headers are `Date,Amount,Type,Description`. Optional headers are `Account,Transaction ID,Posting Date,Time,Currency,Funding Source,Category,Category Type,Merchant,Memo`.
-
-```csv
-Date,Amount,Type,Description,Account,Transaction ID,Currency,Funding Source
-2026-01-02,-60.00,Purchase,Sample merchant A,Sample PayPal,order-a,USD,Sample checking 1234
-2026-01-06,-40.00,Purchase,Sample merchant B,Sample PayPal,order-b,USD,Sample checking 1234
-```
-
-- Dates use `yyyy-MM-dd` or `MM/dd/yyyy`; amounts must represent exact cents.
-- Purchases, fees, and cash withdrawals are negative. Deposits, refunds, and credit-account payments are positive. A payment from checking to a credit account is negative in checking and positive on the credit account.
-- `Currency`, when supplied, must be `USD`. Currency conversion is not modeled.
-- Use stable provider transaction IDs when available. `Account`, when supplied, must identify the selected account by nickname, account number, or last four digits. Conflicting account identity rejects the import.
-- Preserve refund and repayment types. Do not turn a payment into income to force a matching total.
+The [normalized CSV contract](IMPORTS.md#normalized-csv-contract) defines signed amounts, transaction types, account identity, and stable source references. Currency conversion is not modeled; all imported activity must be denominated in USD.
 
 ### Rules
 
@@ -177,16 +158,16 @@ Transaction links describe how retained account entries relate to the same purch
 | Relationship | Source → linked entry | Effect on spending |
 | --- | --- | --- |
 | `BankTransfer` | Checking withdrawal → equal savings deposit | Neither entry is income or expense. Both remain in their account ledgers. |
-| `PurchaseMirror` | Original PayPal or Apple Pay purchase → equal signed bank/card entry | Count the original purchase once. The other entry is its funding representation. |
+| `PurchaseMirror` | Original wallet purchase → equal signed bank/card entry | Count the original purchase once. The other entry is its funding representation. |
 | `PurchaseFundingAllocation` | Wallet purchase → a combined bank/card debit | Enter the portion funded. Several purchases may share the debit, and a purchase may be split across funding debits. Any unallocated debit remains visible. |
-| `CreditCardPaymentFunding` | Positive card/Smart Connect payment → equal negative checking payment | Repayment of debt is separate from new purchases. Its amount and date need not match individual purchases. |
+| `CreditCardPaymentFunding` | Positive credit-account payment → equal negative checking payment | Repayment of debt is separate from new purchases. Its amount and date need not match individual purchases. |
 | `CreditCardPaymentAllocation` | Positive credit-account payment → a charge on that same credit account | Optional payment attribution, bounded by the payment and purchase amounts; it does not add spending. |
 | `PurchaseRefund` | Positive refund → its original negative purchase in the same account | Reduce the purchase's expense category by the refunded portion. A later refund is allowed after the purchase has been paid. |
 | `ManualReview` | Two entries requiring investigation | Record a relationship without changing financial treatment. |
 
-For example, two PayPal purchases of $60 and $40 followed by a $100 direct checking debit can use two funding allocations. If those purchases instead used Smart Connect, import its charges as well, link duplicate purchase representations, and link the later Smart Connect payment to checking. The $100 repayment does not become another $100 expense.
+For example, two wallet purchases of $60 and $40 followed by a $100 direct checking debit can use two funding allocations. If those purchases instead used a credit account, import its charges as well, link duplicate purchase representations, and link the later credit-account payment to checking. The $100 repayment does not become another $100 expense.
 
-PayPal may also list a `Buyer Credit Payment` for that same repayment. Its matching `PurchaseMirror` and the Smart Connect `CreditCardPaymentFunding` relationship may share the same checking entry when the account types, payment types, and amounts agree. This preserves all three records while counting one cash outflow. Ordinary purchase mirrors cannot reuse a repayment debit this way.
+A wallet export may also contain a `Buyer Credit Payment` entry for that same repayment. Its matching `PurchaseMirror` and the liability account's `CreditCardPaymentFunding` relationship may share the same checking entry when the account types, payment types, and amounts agree. This preserves all three records while counting one cash outflow. Ordinary purchase mirrors cannot reuse a repayment debit this way.
 
 Automatic matching requires explicit account-reference evidence and an unambiguous counterpart. Wallet purchase matches also require corroborating provider, merchant, or transaction-reference information; a bank account reference and equal amount alone are insufficient. **Repair Data Links** uses the same rules. Ambiguous records need manual review; the application does not guess which older purchases an aggregate payment settled. Allocation totals cannot exceed the participating entries. Editing or removing a link updates reporting without rewriting merchant categories, and a removed automatic match is remembered so repair does not immediately recreate it. Remove links before changing a linked entry's amount, account, date, or type.
 

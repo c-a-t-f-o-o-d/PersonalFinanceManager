@@ -7,17 +7,34 @@ public static class ImportAccountValidation
 {
     public static void Validate(Account account, string profileCode, ParseResult parse)
     {
-        if (parse.Rows.Any(row => !string.Equals(row.Currency, "USD", StringComparison.OrdinalIgnoreCase)))
+        if ((!string.IsNullOrWhiteSpace(parse.Currency) && !string.Equals(parse.Currency, "USD", StringComparison.OrdinalIgnoreCase))
+            || parse.Rows.Any(row => !string.Equals(row.Currency, "USD", StringComparison.OrdinalIgnoreCase)))
             throw new InvalidOperationException("This account ledger supports USD only. Convert foreign-currency activity explicitly before importing; currencies cannot be combined as equal dollars.");
-        bool requiresLiability = profileCode is ImportProfileCodes.AppleCardCsv or ImportProfileCodes.ChaseCreditCardCsv or ImportProfileCodes.PayPalSmartConnectCsv;
+        bool requiresLiability = profileCode is ImportProfileCodes.AppleCardCsv or ImportProfileCodes.ChaseCreditCardCsv or ImportProfileCodes.PayPalSmartConnectCsv or ImportProfileCodes.CreditAccountCsv
+            || string.Equals(parse.SourceAccountType, "CREDITCARD", StringComparison.OrdinalIgnoreCase);
         if (requiresLiability && !AccountClassification.IsLiability(account.AccountType))
             throw new InvalidOperationException("This card/credit statement must be imported into its liability account, not the bank account that pays it.");
-        if (profileCode == ImportProfileCodes.PayPalStatement && !AccountClassification.IsWallet(account.AccountType))
-            throw new InvalidOperationException("Import PayPal wallet purchases into a PayPal wallet account. Import Smart Connect/card statements into their own credit account.");
-        if (profileCode is ImportProfileCodes.AllyCheckingCsv or ImportProfileCodes.RegionsBankCsv
+        if (profileCode is ImportProfileCodes.PayPalStatement or ImportProfileCodes.PayPalActivityCsv or ImportProfileCodes.PayPalBalanceStatementCsv
+            && !AccountClassification.IsWallet(account.AccountType))
+            throw new InvalidOperationException("Import wallet activity into its wallet account. Import credit statements into their separate liability account.");
+        bool requiresBank = profileCode is ImportProfileCodes.AllyCheckingCsv or ImportProfileCodes.RegionsBankCsv
+            || parse.SourceAccountType?.ToUpperInvariant() is "BANK" or "CHECKING" or "SAVINGS" or "MONEYMRKT";
+        if (requiresBank
             && (!AccountClassification.IsCash(account.AccountType) || AccountClassification.IsWallet(account.AccountType)))
             throw new InvalidOperationException("Select the checking or savings account shown on this bank export.");
-        string[] identities = parse.Rows.Select(row => row.SourceAccountIdentity?.Trim()).OfType<string>()
+        string selectedType = account.AccountType.Replace('_', ' ').Replace('-', ' ').ToUpperInvariant();
+        bool subtypeMismatch = parse.SourceAccountType?.ToUpperInvariant() switch
+        {
+            "CHECKING" => !selectedType.Contains("CHECKING", StringComparison.Ordinal),
+            "SAVINGS" => !selectedType.Contains("SAVINGS", StringComparison.Ordinal),
+            "MONEYMRKT" => !selectedType.Contains("MONEY MARKET", StringComparison.Ordinal),
+            _ => false
+        };
+        if (subtypeMismatch)
+            throw new InvalidOperationException("The statement's bank account type conflicts with the selected checking, savings, or money-market account.");
+        if (string.Equals(parse.SourceAccountType, "CASH", StringComparison.OrdinalIgnoreCase) && !AccountClassification.IsCash(account.AccountType))
+            throw new InvalidOperationException("Select a cash account for this cash activity export.");
+        string[] identities = parse.Rows.Select(row => row.SourceAccountIdentity?.Trim()).Append(parse.SourceAccountIdentity?.Trim()).OfType<string>()
             .Where(value => value.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
         if (identities.Any(identity => !Matches(account, identity)))
             throw new InvalidOperationException("The file contains an account identifier that does not match the selected account. Split mixed-account files and select the matching account.");

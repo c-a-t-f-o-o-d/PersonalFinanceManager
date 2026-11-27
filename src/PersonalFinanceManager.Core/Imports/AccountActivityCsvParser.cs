@@ -189,7 +189,7 @@ public class AccountActivityCsvParser : ITransactionParser
 
         if (IsCreditAccount && normalized is not ("PURCHASE" or "SALE" or "DEBIT" or "FEE" or "INTEREST CHARGE" or "PAYMENT" or "REFUND" or "RETURN" or "CREDIT" or "CASHBACK" or "ADJUSTMENT"))
         {
-            error = "Smart Connect normalized Type must be Purchase, Sale, Debit, Fee, Interest Charge, Payment, Refund, Return, Credit, Cashback, or Adjustment.";
+            error = "Normalized credit-account Type must be Purchase, Sale, Debit, Fee, Interest Charge, Payment, Refund, Return, Credit, Cashback, or Adjustment.";
             return false;
         }
 
@@ -200,8 +200,13 @@ public class AccountActivityCsvParser : ITransactionParser
     private static bool TryParseDate(string text, out DateOnly date) => DateOnly.TryParseExact(text, new[] { "yyyy-MM-dd", "MM/dd/yyyy", "M/d/yyyy" }, CultureInfo.InvariantCulture, DateTimeStyles.None, out date);
 }
 
-public sealed class PayPalSmartConnectCsvParser : AccountActivityCsvParser
+public class CreditAccountCsvParser : AccountActivityCsvParser
+{
+    public override string ProfileCode => ImportProfileCodes.CreditAccountCsv;
+    protected override bool IsCreditAccount => true;
+}
+
+public sealed class PayPalSmartConnectCsvParser : CreditAccountCsvParser
 {
     public override string ProfileCode => ImportProfileCodes.PayPalSmartConnectCsv;
-    protected override bool IsCreditAccount => true;
 }

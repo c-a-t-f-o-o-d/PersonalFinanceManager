@@ -49,6 +49,7 @@ namespace PersonalFinanceManager.App.UI.Views
             accountRow.Controls.Add(_accounts);
             accountRow.Controls.Add(new Label { Text = "Profile", Width = 60, TextAlign = System.Drawing.ContentAlignment.MiddleLeft });
             _profiles.Width = 260;
+            _profiles.DropDownWidth = 480;
             _profiles.DropDownStyle = ComboBoxStyle.DropDownList;
             accountRow.Controls.Add(_profiles);
             FlowLayoutPanel fileRow = new() { Dock = DockStyle.Fill };
@@ -59,10 +60,10 @@ namespace PersonalFinanceManager.App.UI.Views
             browse.Click += (_, _) => Browse();
             fileRow.Controls.Add(browse);
             Button preview = new() { Text = "Preview", Width = 100 };
-            preview.Click += async (_, _) => await PreviewAsync().ConfigureAwait(true);
+            preview.Click += async (_, _) => await RunImportActionAsync(PreviewAsync).ConfigureAwait(true);
             fileRow.Controls.Add(preview);
             Button import = new() { Text = "Import", Width = 100 };
-            import.Click += async (_, _) => await ImportAsync().ConfigureAwait(true);
+            import.Click += async (_, _) => await RunImportActionAsync(ImportAsync).ConfigureAwait(true);
             fileRow.Controls.Add(import);
             Button repairDataFlow = new() { Text = "Repair Data Links", Width = 135 };
             repairDataFlow.Click += async (_, _) => await RepairDataFlowAsync().ConfigureAwait(true);
@@ -139,6 +140,20 @@ namespace PersonalFinanceManager.App.UI.Views
             if (dialog.ShowDialog(this) == DialogResult.OK)
             {
                 _filePath.Text = dialog.FileName;
+            }
+        }
+
+        private async Task RunImportActionAsync(Func<Task> action)
+        {
+            try
+            {
+                await action().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _bindingSource.DataSource = Array.Empty<ImportedTransaction>();
+                _summary.Text = ex.Message;
+                MessageBox.Show(this, ex.Message, "Import could not be completed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 

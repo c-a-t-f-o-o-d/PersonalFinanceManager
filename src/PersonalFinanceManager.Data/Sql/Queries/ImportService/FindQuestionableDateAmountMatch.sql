@@ -20,6 +20,7 @@ WHERE AccountId = @AccountId
           INNER JOIN dbo.ImportBatch AS currentBatch ON currentBatch.ImportBatchId = @ImportBatchId
           WHERE oldBatch.ImportBatchId = dbo.ImportedTransaction.ImportBatchId
             AND oldBatch.ImportProfileCode = currentBatch.ImportProfileCode
+            AND currentBatch.ImportProfileCode <> N'QIF'
       )
   )
 ORDER BY

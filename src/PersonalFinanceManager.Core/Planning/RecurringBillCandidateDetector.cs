@@ -8,7 +8,8 @@ public static class RecurringBillCandidateDetector
     public static IReadOnlyList<RecurringBillCandidate> Detect(ReportData data, int minimumTransactions, int minimumMonths)
     {
         FinancialReportCalculator calculator = new(data);
-        return calculator.NetExpenses().Where(row => row.Amount > 0M && !calculator.NeedsLinkReview(row.ImportedTransactionId) && !string.IsNullOrWhiteSpace(row.Description))
+        return calculator.NetExpenses().Where(row => row.Amount > 0M && !calculator.NeedsLinkReview(row.ImportedTransactionId)
+            && !calculator.NeedsClassificationReview(row.ImportedTransactionId) && !string.IsNullOrWhiteSpace(row.Description))
             .GroupBy(row => (row.AccountId, Description: row.Description.Trim().ToUpperInvariant()))
             .Where(group => group.Count() >= Math.Max(2, minimumTransactions)
                 && group.Select(row => (row.TransactionDate.Year, row.TransactionDate.Month)).Distinct().Count() >= Math.Max(2, minimumMonths))

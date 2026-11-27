@@ -1,5 +1,6 @@
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Core.Planning;
+using PersonalFinanceManager.Core.Imports;
 
 namespace PersonalFinanceManager.Core.Reporting;
 
@@ -22,6 +23,11 @@ public sealed class FinancialReportCalculator
 
     public IReadOnlyList<ExpenseDetailItem> NetExpenses() => ExpenseRows(_data.Transactions).ToArray();
     public bool NeedsLinkReview(long transactionId) => _relationshipsNeedingReview.Any(link => link.SourceId == transactionId || link.LinkedId == transactionId);
+    public bool NeedsClassificationReview(long transactionId) => _transactions.TryGetValue(transactionId, out ReportTransaction? row)
+        && ImportClassification.RequiresReview(row.Type) && !row.IsIncome && !IsTransfer(row)
+        && !Ignored(row) && !LinkedTransfer(row.Id) && !_targetLinks[row.Id].Any(IsMirror)
+        && !(row.Amount > 0M && _sourceLinks[row.Id].Where(link => IsType(link, TransactionLinkTypes.PurchaseRefund))
+            .Sum(link => link.AllocationAmount ?? 0M) == row.Amount);
 
     public ExpenseReportResult Expenses(ExpenseReportFilter filter)
     {
@@ -219,7 +225,11 @@ public sealed class FinancialReportCalculator
     {
         HashSet<long> ids = selected.Select(transaction => transaction.Id).ToHashSet();
         int count = _relationshipsNeedingReview.Count(link => ids.Contains(link.SourceId) || ids.Contains(link.LinkedId));
-        return count == 0 ? [] : [$"{count} transaction relationship(s) require review. Invalid or unverified links do not hide ledger entries; totals may include unresolved purchase/funding representations. Review Transaction Links and Data Health before relying on them."];
+        List<string> warnings = new();
+        if (count > 0) warnings.Add($"{count} transaction relationship(s) require review. Invalid or unverified links do not hide ledger entries; totals may include unresolved purchase/funding representations. Review Transaction Links and Data Health before relying on them.");
+        int unclassified = ids.Count(NeedsClassificationReview);
+        if (unclassified > 0) warnings.Add($"{unclassified} imported transaction(s) require classification. Unclassified credits remain in account activity but are excluded from income and refunds; unclassified debits remain visible in spending. Review Transactions and Data Health before relying on totals.");
+        return warnings;
     }
 
     private IEnumerable<ExpenseDetailItem> ExpenseRows(IEnumerable<ReportTransaction> transactions)
@@ -239,7 +249,7 @@ public sealed class FinancialReportCalculator
                     yield return ExpenseLine(transaction, -allocated, purchase.Category, purchase.SpendingClass);
                 }
             }
-            if (transaction.IsIncome) continue;
+            if (transaction.IsIncome || (transaction.Amount > 0M && NeedsClassificationReview(transaction.Id))) continue;
             decimal amount = -transaction.Amount + refundAllocated;
             if (transaction.Amount < 0M)
                 amount -= _targetLinks[transaction.Id].Where(link => IsType(link, TransactionLinkTypes.PurchaseFundingAllocation)).Sum(link => link.AllocationAmount ?? 0M);

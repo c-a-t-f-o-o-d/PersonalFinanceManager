@@ -17,10 +17,14 @@ namespace PersonalFinanceManager.Data.Services
         private readonly IReadOnlyList<ImportProfileOption> _profileOptions =
         [
             new ImportProfileOption(ImportProfileCodes.AccountActivityCsv, "Normalized Bank / Wallet / Card CSV", "CSV files (*.csv)|*.csv|All files (*.*)|*.*"),
-            new ImportProfileOption(ImportProfileCodes.PayPalSmartConnectCsv, "PayPal Smart Connect (normalized CSV)", "CSV files (*.csv)|*.csv|All files (*.*)|*.*"),
+            new ImportProfileOption(ImportProfileCodes.CreditAccountCsv, "Normalized Credit Account CSV", "CSV files (*.csv)|*.csv|All files (*.*)|*.*"),
+            new ImportProfileOption(ImportProfileCodes.OfxQfx, "Bank / Credit Card OFX or QFX", "OFX/QFX statements (*.ofx;*.qfx)|*.ofx;*.qfx|All files (*.*)|*.*"),
+            new ImportProfileOption(ImportProfileCodes.Qif, "Bank / Cash / Credit Card QIF (USD, US dates)", "QIF files (*.qif)|*.qif|All files (*.*)|*.*"),
             new ImportProfileOption(ImportProfileCodes.AllyCheckingCsv, "Ally Checking CSV", "CSV files (*.csv)|*.csv|All files (*.*)|*.*"),
             new ImportProfileOption(ImportProfileCodes.AppleCardCsv, "Apple Card CSV", "CSV files (*.csv)|*.csv|All files (*.*)|*.*"),
             new ImportProfileOption(ImportProfileCodes.ChaseCreditCardCsv, "Chase / Amazon Credit Card CSV", "CSV files (*.csv)|*.csv|All files (*.*)|*.*"),
+            new ImportProfileOption(ImportProfileCodes.PayPalActivityCsv, "PayPal Activity Download CSV (balance impact)", "CSV files (*.csv)|*.csv|All files (*.*)|*.*"),
+            new ImportProfileOption(ImportProfileCodes.PayPalBalanceStatementCsv, "PayPal Balance Statement CSV", "CSV files (*.csv)|*.csv|All files (*.*)|*.*"),
             new ImportProfileOption(ImportProfileCodes.PayPalStatement, "PayPal Account Statement PDF/Text", "PayPal statements (*.pdf;*.txt)|*.pdf;*.txt|All files (*.*)|*.*"),
             new ImportProfileOption(ImportProfileCodes.RegionsBankCsv, "Regions Bank Checking/Savings CSV", "CSV files (*.csv)|*.csv|All files (*.*)|*.*")
         ];
@@ -38,11 +42,16 @@ namespace PersonalFinanceManager.Data.Services
             _parsers = new Dictionary<string, ITransactionParser>(StringComparer.OrdinalIgnoreCase)
             {
                 [ImportProfileCodes.AccountActivityCsv] = new AccountActivityCsvParser(),
+                [ImportProfileCodes.CreditAccountCsv] = new CreditAccountCsvParser(),
                 [ImportProfileCodes.PayPalSmartConnectCsv] = new PayPalSmartConnectCsvParser(),
+                [ImportProfileCodes.OfxQfx] = new OfxQfxParser(),
+                [ImportProfileCodes.Qif] = new QifParser(),
                 [ImportProfileCodes.AllyCheckingCsv] = new AllyTransactionParser(),
                 [ImportProfileCodes.AppleCardCsv] = new AppleCardParser(),
                 [ImportProfileCodes.ChaseCreditCardCsv] = new ChaseCreditCardParser(),
                 [ImportProfileCodes.PayPalStatement] = new PayPalStatementParser(),
+                [ImportProfileCodes.PayPalActivityCsv] = new PayPalActivityCsvParser(),
+                [ImportProfileCodes.PayPalBalanceStatementCsv] = new PayPalBalanceStatementCsvParser(),
                 [ImportProfileCodes.RegionsBankCsv] = new RegionsBankParser()
             };
         }
@@ -274,9 +283,8 @@ namespace PersonalFinanceManager.Data.Services
             bool creditCardPayment = IsCreditCardPayment(parsed, accountType);
             bool creditCardReturn = IsCreditCardReturnOrCredit(parsed);
             bool creditCardFee = string.Equals(parsed.Type, "Fee", StringComparison.OrdinalIgnoreCase);
-            bool creditCardAdjustment = string.Equals(parsed.Type, "Other", StringComparison.OrdinalIgnoreCase) && parsed.Amount > 0;
             bool bankTransfer = IsParsedTransfer(parsed);
-            bool isIncome = rule?.IsIncome ?? (parsed.Amount > 0 && !AccountClassification.IsLiability(accountType) && !buyerCreditPayment && !creditCardPayment && !creditCardReturn && !creditCardAdjustment && !bankTransfer);
+            bool isIncome = rule?.IsIncome ?? GetDefaultIsIncome(parsed, accountType);
             bool isTransfer = rule?.IsTransfer ?? (buyerCreditPayment || creditCardPayment || bankTransfer);
 
             return new ImportedTransaction
@@ -341,7 +349,7 @@ namespace PersonalFinanceManager.Data.Services
         {
             if (buyerCreditPayment)
             {
-                return "PayPal Smart Connect Payment";
+                return "Wallet Credit Repayment";
             }
 
             if (creditCardPayment)
@@ -372,6 +380,12 @@ namespace PersonalFinanceManager.Data.Services
             return InferCategoryTypeFromImportedValues(parsed.SourceCategory, parsed.Type);
         }
 
+        private static bool GetDefaultIsIncome(ParsedTransaction parsed, string? accountType) =>
+            (parsed.Amount > 0 || ImportClassification.IsExplicitIncome(parsed.Type))
+            && !ImportClassification.RequiresReview(parsed.Type) && !AccountClassification.IsLiability(accountType)
+            && !parsed.Type.Contains("Buyer Credit Payment", StringComparison.OrdinalIgnoreCase)
+            && !IsCreditCardReturnOrCredit(parsed) && !IsParsedTransfer(parsed);
+
         private static bool IsCreditCardPayment(ParsedTransaction parsed, string? accountType)
         {
             return AccountClassification.IsLiability(accountType) && string.Equals(parsed.Type, "Payment", StringComparison.OrdinalIgnoreCase) && parsed.Amount != 0;
@@ -397,9 +411,9 @@ namespace PersonalFinanceManager.Data.Services
             string normalizedCategory = TextNormalizer.NormalizeForComparison(category ?? string.Empty);
             string normalizedType = TextNormalizer.NormalizeForComparison(type ?? string.Empty);
 
-            if (normalizedType == "PAYMENT" || normalizedCategory == "TRANSFER")
+            if (normalizedCategory == "TRANSFER")
             {
-                return "Credit Card Payment";
+                return "Bank Transfer";
             }
 
             if (normalizedCategory == "DINING" || normalizedCategory == "RESTAURANTS")
@@ -658,7 +672,6 @@ namespace PersonalFinanceManager.Data.Services
             bool creditCardPayment = IsCreditCardPayment(parsed, accountType);
             bool creditCardReturn = IsCreditCardReturnOrCredit(parsed);
             bool creditCardFee = string.Equals(parsed.Type, "Fee", StringComparison.OrdinalIgnoreCase);
-            bool creditCardAdjustment = string.Equals(parsed.Type, "Other", StringComparison.OrdinalIgnoreCase) && parsed.Amount > 0;
             bool bankTransfer = IsParsedTransfer(parsed);
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
@@ -669,7 +682,7 @@ namespace PersonalFinanceManager.Data.Services
             command.Parameters.Add(SqlParameters.NVarChar("@Category", rule?.Category ?? GetDefaultCategory(parsed, buyerCreditPayment, creditCardPayment, creditCardReturn, bankTransfer), 200));
             command.Parameters.Add(SqlParameters.NVarChar("@SpendingClass", rule?.SpendingClass ?? GetDefaultCategoryType(parsed, buyerCreditPayment, creditCardPayment, creditCardReturn, creditCardFee, bankTransfer), 100));
             command.Parameters.Add(SqlParameters.NVarChar("@Merchant", rule?.Merchant ?? parsed.Merchant, 200));
-            command.Parameters.Add(SqlParameters.Bit("@IsIncome", rule?.IsIncome ?? (parsed.Amount > 0 && !AccountClassification.IsLiability(accountType) && !buyerCreditPayment && !creditCardPayment && !creditCardReturn && !creditCardAdjustment && !bankTransfer)));
+            command.Parameters.Add(SqlParameters.Bit("@IsIncome", rule?.IsIncome ?? GetDefaultIsIncome(parsed, accountType)));
             command.Parameters.Add(SqlParameters.Bit("@IsTransfer", rule?.IsTransfer ?? (buyerCreditPayment || creditCardPayment || bankTransfer)));
             command.Parameters.Add(SqlParameters.NVarChar("@IncomeOwner", OwnerValues.Normalize(rule?.IncomeOwner), 50));
             command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));

@@ -420,6 +420,111 @@ public sealed class FinancialTrackingSqlTests
         }
     }
 
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    public async Task StandardStatementImportsPreserveClassificationAndReimportIdentity()
+    {
+        Account checking = await AccountAsync("Example Checking", "Checking", "1111");
+        string ofx = await FileAsync("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <OFX><BANKMSGSRSV1><STMTTRNRS><TRNUID>1</TRNUID><STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS><STMTRS>
+            <CURDEF>USD</CURDEF><BANKACCTFROM><BANKID>000000000</BANKID><ACCTID>000000001111</ACCTID><ACCTTYPE>CHECKING</ACCTTYPE></BANKACCTFROM>
+            <BANKTRANLIST><DTSTART>20260401</DTSTART><DTEND>20260501</DTEND>
+            <STMTTRN><TRNTYPE>DIRECTDEP</TRNTYPE><DTPOSTED>20260402</DTPOSTED><TRNAMT>1000.00</TRNAMT><FITID>PAYROLL</FITID><NAME>Example payroll</NAME></STMTTRN>
+            <STMTTRN><TRNTYPE>DIRECTDEP</TRNTYPE><DTPOSTED>20260403</DTPOSTED><TRNAMT>-100.00</TRNAMT><FITID>PAYROLL-REVERSAL</FITID><NAME>Example payroll reversal</NAME></STMTTRN>
+            <STMTTRN><TRNTYPE>POS</TRNTYPE><DTPOSTED>20260404</DTPOSTED><DTUSER>20260403</DTUSER><TRNAMT>-60.00</TRNAMT><FITID>PURCHASE</FITID><NAME>Example store</NAME></STMTTRN>
+            <STMTTRN><TRNTYPE>CREDIT</TRNTYPE><DTPOSTED>20260405</DTPOSTED><TRNAMT>25.00</TRNAMT><FITID>UNCLASSIFIED</FITID><NAME>Unspecified credit</NAME></STMTTRN>
+            </BANKTRANLIST><LEDGERBAL><BALAMT>965.00</BALAMT><DTASOF>20260430</DTASOF></LEDGERBAL>
+            </STMTRS></STMTTRNRS></BANKMSGSRSV1></OFX>
+            """, ".ofx");
+        ImportSummary imported = await _imports.ImportAsync(checking.AccountId, ImportProfileCodes.OfxQfx, ofx);
+        Assert.AreEqual(0, imported.ErrorRows);
+        Assert.AreEqual(4, imported.InsertedRows);
+        Assert.AreEqual(0, (await _imports.ImportAsync(checking.AccountId, ImportProfileCodes.OfxQfx, ofx)).InsertedRows);
+        foreach (bool reapply in new[] { false, true })
+        {
+            if (reapply) await _imports.ReapplyRulesAsync();
+            IReadOnlyList<ImportedTransaction> rows = await RowsAsync();
+            ImportedTransaction credit = rows.Single(row => row.ExternalTransactionId == "UNCLASSIFIED");
+            Assert.IsFalse(credit.IsIncome);
+            Assert.IsFalse(credit.IsTransfer);
+            Assert.IsTrue(rows.Single(row => row.ExternalTransactionId == "PAYROLL-REVERSAL").IsIncome);
+            Assert.AreEqual(new DateOnly(2026, 4, 4), rows.Single(row => row.ExternalTransactionId == "PURCHASE").PostingDate);
+            Assert.AreEqual(new DateOnly(2026, 4, 3), rows.Single(row => row.ExternalTransactionId == "PURCHASE").TransactionDate);
+            Assert.AreEqual(60m, (await _reports.GetExpenseReportAsync(new ExpenseReportFilter { AccountId = checking.AccountId })).Metrics.TotalExpenses);
+            Assert.AreEqual(900m, (await _reports.GetIncomeOwnerSummariesAsync(new SalarySpendingFilter { AccountId = checking.AccountId })).Sum(row => row.TotalNetIncome));
+            Assert.IsFalse((await _reports.GetSalarySpendingAnalysisAsync(new SalarySpendingFilter { AccountId = checking.AccountId })).CanEstimate);
+            DataHealthRepository health = new(_connections!);
+            Assert.AreEqual(1, (await health.GetChecksAsync()).Single(check => check.IssueCode == DataHealthIssueCodes.ImportClassificationReview).Count);
+            Assert.HasCount(1, await health.GetDetailsAsync(DataHealthIssueCodes.ImportClassificationReview));
+        }
+        AccountReconciliation balance = await new AccountReconciliationRepository(_connections!).CheckAsync(new AccountReconciliationRequest
+        {
+            AccountId = checking.AccountId, FromDate = new(2026, 4, 1), ToDate = new(2026, 4, 30), OpeningBalance = 100m, ClosingBalance = 965m
+        }, record: false);
+        Assert.IsTrue(balance.IsBalanced);
+
+        ImportedTransaction unresolved = (await RowsAsync()).Single(row => row.ExternalTransactionId == "UNCLASSIFIED");
+        await _transactions.UpdateCategorizationAsync([unresolved.ImportedTransactionId], "Salary", "Income");
+        Assert.IsFalse((await _reports.GetSalarySpendingAnalysisAsync(new SalarySpendingFilter { AccountId = checking.AccountId })).CanEstimate);
+        Assert.AreEqual(60m, (await _reports.GetExpenseReportAsync(new ExpenseReportFilter { AccountId = checking.AccountId })).Metrics.TotalExpenses);
+        Assert.AreEqual(1, (await new DataHealthRepository(_connections!).GetChecksAsync()).Single(check => check.IssueCode == DataHealthIssueCodes.ImportClassificationReview).Count);
+
+        Account card = await AccountAsync("Example Card", "Credit Card", "2222");
+        string qif = await FileAsync("!Account\nNExample Card\nTCCard\n^\n!Type:CCard\nD4/6/2026\nT-40\nPExample store\n^\nD4/20/2026\nT40\nPExample repayment\nL[Example Checking]\n^\n", ".qif");
+        Assert.AreEqual(2, (await _imports.ImportAsync(card.AccountId, ImportProfileCodes.Qif, qif)).InsertedRows);
+        Assert.AreEqual(0, (await _imports.ImportAsync(card.AccountId, ImportProfileCodes.Qif, qif)).InsertedRows);
+        Assert.AreEqual(40m, (await _reports.GetExpenseReportAsync(new ExpenseReportFilter { AccountId = card.AccountId })).Metrics.TotalExpenses);
+        Assert.IsTrue((await RowsAsync()).Single(row => row.AccountId == card.AccountId && row.Amount == 40m).IsTransfer);
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    public async Task OverlappingQifExportsDoNotDuplicateAnExistingReference()
+    {
+        Account checking = await AccountAsync("Example Checking", "Checking", "1111");
+        const string first = "D4/12/2026\nT-25\nPExample store\nN101\n^\n";
+        const string second = "D4/12/2026\nT-25\nPExample store\nN102\n^\n";
+        await _imports.ImportAsync(checking.AccountId, ImportProfileCodes.Qif, await FileAsync("!Type:Bank\n" + second, ".qif"));
+        ImportSummary overlap = await _imports.ImportAsync(checking.AccountId, ImportProfileCodes.Qif, await FileAsync("!Type:Bank\n" + first + second, ".qif"));
+        Assert.AreEqual(0, overlap.InsertedRows);
+        Assert.AreEqual(1, overlap.ExactDuplicateRows);
+        Assert.AreEqual(1, overlap.DuplicateReviewRows);
+        Assert.HasCount(1, await RowsAsync());
+        DuplicateReviewItem candidate = (await _duplicates.GetAsync(new DuplicateReviewFilter())).Single();
+        await _duplicates.ApproveAsync(candidate.ImportRowId);
+        IReadOnlyList<ImportedTransaction> rows = await RowsAsync();
+        Assert.HasCount(2, rows);
+        Assert.HasCount(1, rows.Where(row => row.Memo == "Reference: 101").ToArray());
+        Assert.HasCount(1, rows.Where(row => row.Memo == "Reference: 102").ToArray());
+    }
+
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    public async Task WalletCsvGrossAndFeesReconcileToTheSourceNetLedger()
+    {
+        Account wallet = await AccountAsync("Example Wallet", "Digital Wallet", "3333");
+        string activity = await FileAsync("Date,Time,TimeZone,Name,Type,Status,Currency,Gross,Fee,Net,Transaction ID,Balance Impact\n04/05/2026,12:00:00,UTC,Example customer,Payment Received,Completed,USD,100.00,-3.00,97.00,RECEIPT-1,Credit\n");
+        ImportSummary first = await _imports.ImportAsync(wallet.AccountId, ImportProfileCodes.PayPalActivityCsv, activity);
+        Assert.AreEqual(0, first.ErrorRows);
+        Assert.AreEqual(2, first.InsertedRows);
+        Assert.AreEqual(0, (await _imports.ImportAsync(wallet.AccountId, ImportProfileCodes.PayPalActivityCsv, activity)).InsertedRows);
+        string statement = await FileAsync("Date,Time,Time Zone,Description,Currency,Gross,Fee,Net,Balance,Transaction ID,Name\n04/06/2026,12:00:00,UTC,Payment Received,USD,20.00,-1.00,19.00,116.00,RECEIPT-2,Another customer\n");
+        Assert.AreEqual(2, (await _imports.ImportAsync(wallet.AccountId, ImportProfileCodes.PayPalBalanceStatementCsv, statement)).InsertedRows);
+        Assert.HasCount(4, await RowsAsync());
+        Assert.AreEqual(4m, await ExpensesAsync());
+        Assert.AreEqual(120m, (await _reports.GetIncomeOwnerSummariesAsync(new SalarySpendingFilter())).Sum(row => row.TotalNetIncome));
+        Assert.AreEqual(116m, (await _reports.GetMoneyInOutSummaryAsync(new ExpenseReportFilter())).NetCashFlow);
+        Assert.IsTrue((await RowsAsync()).All(row => row.FundingSource is null));
+        AccountReconciliation balance = await new AccountReconciliationRepository(_connections!).CheckAsync(new AccountReconciliationRequest
+        {
+            AccountId = wallet.AccountId, FromDate = new(2026, 4, 1), ToDate = new(2026, 4, 30), OpeningBalance = 0m, ClosingBalance = 116m
+        }, record: true);
+        Assert.IsTrue(balance.IsBalanced);
+        await _imports.ReapplyRulesAsync();
+        Assert.AreEqual(4m, await ExpensesAsync());
+    }
+
     private async Task<Account> AccountAsync(string name, string type, string lastFour)
     {
         Account account = new() { AccountNickname = name, Institution = "Example Institution", AccountType = type, AccountNumber = "00000000" + lastFour, IsActive = true };
@@ -439,9 +544,9 @@ public sealed class FinancialTrackingSqlTests
         return await _imports.ImportAsync(account.AccountId, profile, await FileAsync(header + body + "\n"));
     }
 
-    private async Task<string> FileAsync(string content)
+    private async Task<string> FileAsync(string content, string extension = ".csv")
     {
-        string file = Path.Combine(_directory, Guid.NewGuid().ToString("N") + ".csv");
+        string file = Path.Combine(_directory, Guid.NewGuid().ToString("N") + extension);
         await File.WriteAllTextAsync(file, content);
         return file;
     }
