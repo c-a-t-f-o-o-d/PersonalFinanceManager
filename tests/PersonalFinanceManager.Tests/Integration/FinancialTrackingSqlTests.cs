@@ -427,6 +427,7 @@ public sealed class FinancialTrackingSqlTests
         Account checking = await AccountAsync("Example Checking", "Checking", "1111");
         string ofx = await FileAsync("""
             <?xml version="1.0" encoding="UTF-8"?>
+            <?OFX OFXHEADER="200" VERSION="230" SECURITY="NONE" OLDFILEUID="NONE" NEWFILEUID="NONE"?>
             <OFX><BANKMSGSRSV1><STMTTRNRS><TRNUID>1</TRNUID><STATUS><CODE>0</CODE><SEVERITY>INFO</SEVERITY></STATUS><STMTRS>
             <CURDEF>USD</CURDEF><BANKACCTFROM><BANKID>000000000</BANKID><ACCTID>000000001111</ACCTID><ACCTTYPE>CHECKING</ACCTTYPE></BANKACCTFROM>
             <BANKTRANLIST><DTSTART>20260401</DTSTART><DTEND>20260501</DTEND>
