@@ -128,7 +128,7 @@ namespace PersonalFinanceManager.Core.Imports
                 clearingDate = parsedClearingDate;
             }
 
-            if (!decimal.TryParse(amountText, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out decimal rawAmount))
+            if (!ImportAmountParser.TryParse(amountText, out decimal rawAmount))
             {
                 error = $"Invalid amount '{amountText}'.";
                 return null;
@@ -169,19 +169,7 @@ namespace PersonalFinanceManager.Core.Imports
 
         private static decimal NormalizeAmount(string type, decimal rawAmount)
         {
-            string normalizedType = TextNormalizer.NormalizeForComparison(type);
-
-            if (normalizedType is "PURCHASE" or "DEBIT")
-            {
-                return -Math.Abs(rawAmount);
-            }
-
-            if (normalizedType is "PAYMENT" or "CREDIT" or "RETURN" or "OTHER")
-            {
-                return Math.Abs(rawAmount);
-            }
-
-            return rawAmount > 0 ? -rawAmount : Math.Abs(rawAmount);
+            return -rawAmount;
         }
 
         private static string? NormalizeCategory(string category, string type)

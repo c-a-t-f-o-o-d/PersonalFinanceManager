@@ -1,4 +1,5 @@
 using PersonalFinanceManager.Core.Models;
+using PersonalFinanceManager.Core.Planning;
 using PersonalFinanceManager.Data.Sql;
 using Microsoft.Data.SqlClient;
 
@@ -74,72 +75,14 @@ namespace PersonalFinanceManager.Data.Repositories
 
         public async Task<IReadOnlyList<RecurringBillCandidate>> GetMonthlyCandidatesAsync(int minimumTransactions, int minimumMonths, CancellationToken cancellationToken = default)
         {
-            List<RecurringBillCandidate> candidates = new();
-            await using SqlConnection connection = _connectionFactory.CreateConnection();
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using SqlCommand command = connection.CreateCommand();
-
-            command.CommandText = _sqlResources.Read("RecurringBills/GetMonthlyCandidates.sql");
-
-            command.Parameters.Add(SqlParameters.Int("@MinimumTransactions", Math.Max(minimumTransactions, 2)));
-            command.Parameters.Add(SqlParameters.Int("@MinimumMonths", Math.Max(minimumMonths, 2)));
-            await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-
-            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                string? category = reader.GetStringOrNull("Category");
-                string? spendingClass = reader.GetStringOrNull("SpendingClass");
-
-                candidates.Add(new RecurringBillCandidate
-                {
-                    AccountId = reader.GetInt32Value("AccountId"),
-                    AccountNickname = reader.GetStringOrEmpty("AccountNickname"),
-                    SourceDescription = reader.GetStringOrEmpty("SourceDescription"),
-                    Payee = reader.GetStringOrEmpty("Payee"),
-                    Category = category,
-                    SpendingClass = spendingClass,
-                    SuggestedRequirementType = SuggestRequirementType(category, spendingClass),
-                    AverageAmount = decimal.Round(reader.GetDecimalValue("AverageAmount"), 2, MidpointRounding.AwayFromZero),
-                    MinimumAmount = reader.GetDecimalValue("MinimumAmount"),
-                    MaximumAmount = reader.GetDecimalValue("MaximumAmount"),
-                    FirstSeenDate = reader.GetDateOnlyOrNull("FirstSeenDate") ?? DateOnly.MinValue,
-                    LastSeenDate = reader.GetDateOnlyOrNull("LastSeenDate") ?? DateOnly.MinValue,
-                    TransactionCount = reader.GetInt32Value("TransactionCount"),
-                    MonthCount = reader.GetInt32Value("MonthCount"),
-                    SuggestedDueDay = reader.GetInt32Value("SuggestedDueDay"),
-                    AlreadyExists = reader.GetBooleanValue("AlreadyExists")
-                });
-            }
-
-            return candidates;
+            ReportRepository reports = new(_connectionFactory);
+            return RecurringBillCandidateDetector.Detect(await reports.GetDataAsync(cancellationToken).ConfigureAwait(false), minimumTransactions, minimumMonths);
         }
 
         public async Task<int> CreateFromCandidateAsync(RecurringBillCandidate candidate, CancellationToken cancellationToken = default)
         {
-            ArgumentNullException.ThrowIfNull(candidate);
-
-            RecurringBill bill = new()
-            {
-                AccountId = candidate.AccountId,
-                BillName = candidate.Payee.Length > 200 ? candidate.Payee[..200] : candidate.Payee,
-                Payee = candidate.Payee,
-                Category = candidate.Category,
-                SpendingClass = candidate.SpendingClass,
-                RequirementType = candidate.SuggestedRequirementType,
-                TypicalAmount = candidate.AverageAmount,
-                DueDay = candidate.SuggestedDueDay,
-                NextDueDate = CalculateNextMonthlyDueDate(candidate.SuggestedDueDay, DateOnly.FromDateTime(DateTime.Today)),
-                Frequency = BillFrequencies.Monthly,
-                IsRequired = !string.Equals(candidate.SuggestedRequirementType, BillRequirementTypes.Want, StringComparison.OrdinalIgnoreCase),
-                IsActive = true,
-                SourceDescription = candidate.SourceDescription,
-                FirstSeenDate = candidate.FirstSeenDate,
-                LastSeenDate = candidate.LastSeenDate,
-                TransactionCount = candidate.TransactionCount,
-                Notes = "Created from recurring transaction history."
-            };
-
-            return await SaveAsync(bill, cancellationToken).ConfigureAwait(false);
+            RecurringBill draft = RecurringBillCandidateDetector.CreateDraft(candidate, DateOnly.FromDateTime(DateTime.Today));
+            return await SaveAsync(draft, cancellationToken).ConfigureAwait(false);
         }
 
         public async Task<IReadOnlyList<string>> GetRequirementTypesAsync(CancellationToken cancellationToken = default)
@@ -247,43 +190,6 @@ namespace PersonalFinanceManager.Data.Repositories
             };
         }
 
-        private static DateOnly CalculateNextMonthlyDueDate(int dueDay, DateOnly today)
-        {
-            int validDay = Math.Clamp(dueDay, 1, DateTime.DaysInMonth(today.Year, today.Month));
-            DateOnly candidate = new(today.Year, today.Month, validDay);
-
-            if (candidate < today)
-            {
-                DateOnly nextMonth = today.AddMonths(1);
-                int nextDay = Math.Clamp(dueDay, 1, DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month));
-                return new DateOnly(nextMonth.Year, nextMonth.Month, nextDay);
-            }
-
-            return candidate;
-        }
-
-        private static string SuggestRequirementType(string? category, string? spendingClass)
-        {
-            string text = (category + " " + spendingClass).ToUpperInvariant();
-
-            if (text.Contains("LOAN", StringComparison.Ordinal) || text.Contains("CREDIT", StringComparison.Ordinal) || text.Contains("DEBT", StringComparison.Ordinal) || text.Contains("MORTGAGE", StringComparison.Ordinal))
-            {
-                return BillRequirementTypes.Debt;
-            }
-
-            if (text.Contains("SAVING", StringComparison.Ordinal) || text.Contains("RETIREMENT", StringComparison.Ordinal) || text.Contains("INVEST", StringComparison.Ordinal))
-            {
-                return BillRequirementTypes.Savings;
-            }
-
-            if (text.Contains("DINING", StringComparison.Ordinal) || text.Contains("ENTERTAINMENT", StringComparison.Ordinal) || text.Contains("SHOPPING", StringComparison.Ordinal) || text.Contains("RESTAURANT", StringComparison.Ordinal))
-            {
-                return BillRequirementTypes.Want;
-            }
-
-            return BillRequirementTypes.Need;
-        }
-
         private static void Validate(RecurringBill bill)
         {
             if (string.IsNullOrWhiteSpace(bill.BillName))
@@ -295,6 +201,8 @@ namespace PersonalFinanceManager.Data.Repositories
             {
                 throw new InvalidOperationException("Payee is required.");
             }
+
+            bill.Frequency = BillSchedule.NormalizeFrequency(bill.Frequency);
 
             if (bill.TypicalAmount < 0)
             {

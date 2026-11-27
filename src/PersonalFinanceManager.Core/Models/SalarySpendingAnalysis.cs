@@ -3,6 +3,10 @@ namespace PersonalFinanceManager.Core.Models
     public sealed class SalarySpendingAnalysis
     {
         public SalarySpendingMode SpendingMode { get; set; }
+        public Reporting.ReportPeriod Period { get; set; } = new(null, null, false);
+        public bool CanEstimate { get; set; } = true;
+        public IReadOnlyList<string> Warnings { get; set; } = [];
+        public IReadOnlyList<IncomeOwnerSummary> IncomeOwnerSummaries { get; set; } = [];
         public decimal TargetMonthlySpending { get; set; }
         public decimal TransactionMonthlySpending { get; set; }
         public decimal RequiredBillsMonthlySpending { get; set; }

@@ -23,6 +23,8 @@ namespace PersonalFinanceManager.Core.Models
         public bool IsIncome { get; set; }
         public bool IsTransfer { get; set; }
         public bool IsManual { get; set; }
+        public bool ClassificationIsManual { get; set; }
+        public bool LegacyLinkTreatment { get; set; }
         public string? IncomeOwner { get; set; }
         public string? Notes { get; set; }
         public DateTime CreatedAtUtc { get; set; }

@@ -13,6 +13,7 @@ The project is intentionally self-hosted. Your database is under your control, a
 - Import support for multiple CSV/PDF-text export styles.
 - Duplicate-review workflow for overlapping imports.
 - Transaction-link workflow for transfers, PayPal funding, and credit-card payments.
+- Statement balance reconciliation that retains every imported account entry.
 - Expense analysis with category and category-type breakdowns.
 - Money-in / money-out analysis.
 - Salary-needed analysis using spending trends, bills, and paycheck assumptions.
@@ -124,55 +125,96 @@ See `DEMO_WORKFLOW.md` for a reviewer-friendly walkthrough.
 
 ### Accounts
 
-Accounts store institution details, account type, owner, balance fields, interest/APR fields, due dates, payment amounts, and optional protected account-number data.
+Accounts store institution details, account type, owner, balance fields, a balance-as-of date, interest/APR fields, due dates, payment amounts, and optional protected account-number data. Use separate accounts for a PayPal wallet and PayPal Credit or Smart Connect: a wallet holds cash, while a credit account holds debt. Apple Pay is a payment method; Apple Cash is a cash account, and Apple Card is a credit account.
+
+Account balances are entered snapshots. Importing transactions does not update them. Runway uses available balance before current balance, retains overdrafts, and excludes credit limits and loan balances from spendable cash.
+
+Select an account and choose **Reconcile Statement** to compare its opening balance plus posted activity with its closing statement balance. For credit and loan accounts, enter the amount owed as a positive balance; charges increase it and payments or refunds reduce it. The check includes transfers, repayments, ignored rows, and mirrored purchases because those entries still belong on their respective account statements. Posting dates take precedence over transaction dates; the result identifies rows that needed the transaction-date fallback. A recorded check preserves the result at that time and does not change transactions or balances.
 
 ### Imports
 
-PersonalFinanceManager uses import profiles for institution-specific files. Current import work has covered formats for:
+PersonalFinanceManager provides parsers for these export formats:
 
 - Ally transaction CSV exports
 - PayPal statement PDF/text exports
-- PayPal Smart Connect CSV-style exports
 - Chase / Amazon credit-card CSV exports
 - Apple Card CSV exports
 - Regions checking and savings CSV exports
+- Normalized bank, wallet, or card activity CSV, including a separate normalized Smart Connect profile
 
-Import profiles parse source files into a normalized transaction model. Exact duplicate rows can be skipped automatically, while questionable overlaps are sent to Duplicate Review.
+Native provider formats can vary. Preview each import and review parser errors before saving. PayPal PDF/text parsing keeps each transaction bounded to its own record. If a detached funding section cannot be associated unambiguously, the economic transactions remain available and the preview reports missing funding metadata. Supply a normalized CSV when the native layout cannot preserve those relationships reliably.
+
+The PayPal PDF/text profile imports its **account activity** section, which is not a proven complete PayPal balance ledger. Direct bank/card-funded purchases may lack offsetting wallet funding credits. Wallet balance checks refuse periods containing this profile; reconcile the funding accounts, or import a complete normalized wallet balance ledger into a separate account and reconcile duplicate purchase representations explicitly. Unsupported or ambiguous positive PayPal transaction types are reported as parse errors rather than guessed as income or refunds.
+
+Import every account's statement into that account. Matching entries on different providers are retained for reconciliation. Exact repeated rows can be skipped automatically; **Duplicate Review** also exposes exact skips so a legitimate repeat purchase can be recovered. Equal amounts and nearby dates alone do not prove a duplicate or a transfer. Reimporting a file checks its individual rows; a recognized previously deleted source entry goes to Duplicate Review before restoration.
+
+#### Normalized CSV contract
+
+Choose **Normalized Bank / Wallet / Card CSV** for a provider without a supported native parser, or **PayPal Smart Connect (normalized CSV)** for prepared Smart Connect activity. The latter does not claim support for an undocumented native Smart Connect export format.
+
+Required headers are `Date,Amount,Type,Description`. Optional headers are `Account,Transaction ID,Posting Date,Time,Currency,Funding Source,Category,Category Type,Merchant,Memo`.
+
+```csv
+Date,Amount,Type,Description,Account,Transaction ID,Currency,Funding Source
+2026-01-02,-60.00,Purchase,Sample merchant A,Sample PayPal,order-a,USD,Sample checking 1234
+2026-01-06,-40.00,Purchase,Sample merchant B,Sample PayPal,order-b,USD,Sample checking 1234
+```
+
+- Dates use `yyyy-MM-dd` or `MM/dd/yyyy`; amounts must represent exact cents.
+- Purchases, fees, and cash withdrawals are negative. Deposits, refunds, and credit-account payments are positive. A payment from checking to a credit account is negative in checking and positive on the credit account.
+- `Currency`, when supplied, must be `USD`. Currency conversion is not modeled.
+- Use stable provider transaction IDs when available. `Account`, when supplied, must identify the selected account by nickname, account number, or last four digits. Conflicting account identity rejects the import.
+- Preserve refund and repayment types. Do not turn a payment into income to force a matching total.
 
 ### Rules
 
-Rules assign category, category type, income/transfer flags, and optional owner information. Rule matching normalizes common transaction types into directions, so a rule can target `Deposit` or `Withdrawal` rather than every institution-specific type string.
+Rules assign category, category type, income/transfer flags, and optional owner information. Rule matching uses the amount's sign for `Deposit` or `Withdrawal`, even when a source uses a misleading type label. Manual entries and classifications marked **Keep these choices when rules are reapplied** are preserved. Link relationships remain separate from merchant categorization, so updating a merchant rule does not break a transfer or funding match.
 
 ### Transaction links
 
-Transaction links connect related rows across accounts. For example:
+Transaction links describe how retained account entries relate to the same purchase or movement of money. On **Transaction Links**, choose **Add Link**, select the source and linked entries, and choose the relationship:
 
-- PayPal merchant purchase to bank funding row
-- Credit-card payment to checking payment row
-- Bank-to-bank transfer pairs
-- Credit-card payment allocation rows
+| Relationship | Source → linked entry | Effect on spending |
+| --- | --- | --- |
+| `BankTransfer` | Checking withdrawal → equal savings deposit | Neither entry is income or expense. Both remain in their account ledgers. |
+| `PurchaseMirror` | Original PayPal or Apple Pay purchase → equal signed bank/card entry | Count the original purchase once. The other entry is its funding representation. |
+| `PurchaseFundingAllocation` | Wallet purchase → a combined bank/card debit | Enter the portion funded. Several purchases may share the debit, and a purchase may be split across funding debits. Any unallocated debit remains visible. |
+| `CreditCardPaymentFunding` | Positive card/Smart Connect payment → equal negative checking payment | Repayment of debt is separate from new purchases. Its amount and date need not match individual purchases. |
+| `CreditCardPaymentAllocation` | Positive credit-account payment → a charge on that same credit account | Optional payment attribution, bounded by the payment and purchase amounts; it does not add spending. |
+| `PurchaseRefund` | Positive refund → its original negative purchase in the same account | Reduce the purchase's expense category by the refunded portion. A later refund is allowed after the purchase has been paid. |
+| `ManualReview` | Two entries requiring investigation | Record a relationship without changing financial treatment. |
 
-Reports exclude funding/payment transfer rows so spending analysis focuses on the original economic transaction instead of double-counting the payment movement.
+For example, two PayPal purchases of $60 and $40 followed by a $100 direct checking debit can use two funding allocations. If those purchases instead used Smart Connect, import its charges as well, link duplicate purchase representations, and link the later Smart Connect payment to checking. The $100 repayment does not become another $100 expense.
+
+Automatic matching requires explicit account-reference evidence and an unambiguous counterpart. **Repair Data Links** uses the same rules. Ambiguous records need manual review; the application does not guess which older purchases an aggregate payment settled. Allocation totals cannot exceed the participating entries. Editing or removing a link updates reporting without rewriting merchant categories, and a removed automatic match is remembered so repair does not immediately recreate it. Remove links before changing a linked entry's amount, account, date, or type.
+
+Earlier releases sometimes overwrote transaction categories while classifying funding rows. The upgrade marks recognizable legacy rows and moves earlier automatic links, along with structurally invalid links, to `ManualReview`. It retains their endpoints, amounts, and original relationship in the review notes. Confirm those relationships against statements before giving them financial effect again. Data Health highlights both the links and categories needing review. Previously overwritten merchant categories cannot be reconstructed from a balance or amount alone.
 
 ### Expense analysis
 
-Expense Analysis summarizes outflows by category or category type, shows monthly spending patterns, and exposes detailed transaction rows for review.
+Expense Analysis summarizes purchases net of refunds by category or category type, shows monthly spending patterns, and exposes detailed transaction rows for review. Transfers, confirmed debt repayments, linked funding representations, and `Ignore` categories are excluded consistently. Unmatched bank debits remain visible until reconciled. Refunds reduce net expense and retain their entered category until assigned or linked to a purchase. Averages use the selected date interval, including months without activity.
 
 ### Money In/Out
 
-Money In/Out shows income, expenses, and net cash flow over time while excluding known transfers.
+Money In/Out shows cash-account activity. At household level it excludes internal cash transfers and duplicate wallet funding representations. Credit repayments remain cash outflows even though they are excluded from purchase spending. An individual account view retains that account's transfer movements. This view and Expense Analysis answer different questions: when cash moved and when a purchase occurred.
 
 ### Salary Needed
 
-Salary Needed estimates the gross salary required to support selected spending patterns. It can use full expense trends, required bills, selected spending buckets, or combinations of those inputs.
+Salary Needed estimates the gross salary required to support selected spending patterns. It can use full expense trends, required bills, selected spending buckets, or combinations of those inputs. Income and expenses share the same observation period; an all-history estimate includes income-only months and identifies its observed coverage.
+
+Choose either posted spouse net income or modeled spouse gross income. Posted take-home pay is not added to gross pay and taxed a second time. In the posted-net mode, a supplied spouse gross amount is used only for the household marginal-tax context. When planned bills and historical spending are combined, clearly matched historical bill payments are replaced by the plan. Uncertain overlaps and missing required inputs produce review notes instead of a reliable-looking zero estimate. Tax calculations remain estimates based on the configured assumptions.
 
 ### Recurring bills
 
-Bills can be added manually or created from recurring transaction candidates. Required bills feed salary and runway calculations.
+Bills can be added manually or created from recurring transaction candidates. Candidate frequency is inferred from the observed dates; ambiguous histories require a frequency selection. Required bills feed salary and runway calculations. Runway begins on the projection date and schedules known bill due dates. Income and bills with unknown due dates are explicitly shown as smoothed estimates, and missing or stale balance snapshots are highlighted.
 
 ### Data Health
 
-Data Health identifies records that may make reports unreliable, such as missing categorization, unowned income, missing balances, missing interest/APR values, duplicate-looking rows, and transfer-like rows without links.
+Data Health identifies records that may make reports unreliable, such as missing categorization, unowned income, missing or stale balance snapshots, missing interest/APR values, duplicate-looking rows, transfer-like rows without links, and legacy funding classifications requiring review. A matched statement balance is an additional check; offsetting omissions can still produce a matching total.
+
+### Database backups and exports
+
+SQL backups use the database specified by the active connection string and verify the resulting backup. CSV exports capture a consistent snapshot of accounts, rules, transactions, recurring bills, transaction links, and recorded statement checks. A SQL backup is still required for full-fidelity database restoration.
 
 ## Privacy and security
 

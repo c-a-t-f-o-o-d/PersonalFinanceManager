@@ -70,12 +70,12 @@ namespace PersonalFinanceManager.Core.Rules
 
             if (string.Equals(normalizedExpected, Deposit, StringComparison.OrdinalIgnoreCase))
             {
-                return amount > 0 || string.Equals(NormalizeRuleType(actualType), Deposit, StringComparison.OrdinalIgnoreCase);
+                return amount > 0 || (amount == 0 && string.Equals(NormalizeRuleType(actualType), Deposit, StringComparison.OrdinalIgnoreCase));
             }
 
             if (string.Equals(normalizedExpected, Withdrawal, StringComparison.OrdinalIgnoreCase))
             {
-                return amount < 0 || string.Equals(NormalizeRuleType(actualType), Withdrawal, StringComparison.OrdinalIgnoreCase);
+                return amount < 0 || (amount == 0 && string.Equals(NormalizeRuleType(actualType), Withdrawal, StringComparison.OrdinalIgnoreCase));
             }
 
             return TextMatches(actualType, expectedType, matchMode);

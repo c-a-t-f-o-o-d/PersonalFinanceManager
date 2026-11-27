@@ -271,8 +271,6 @@ namespace PersonalFinanceManager.Data.Repositories
                     throw new InvalidOperationException("The selected cross-account duplicate transaction was already removed.");
                 }
 
-                await NullDuplicateReferencesAsync(connection, transaction, transactionId.Value, cancellationToken).ConfigureAwait(false);
-                await DeleteTransactionLinksAsync(connection, transaction, transactionId.Value, cancellationToken).ConfigureAwait(false);
                 await DeleteImportedTransactionAsync(connection, transaction, transactionId.Value, cancellationToken).ConfigureAwait(false);
                 await MarkCrossAccountDeletedAsync(connection, transaction, crossAccountDuplicateReviewId, deleteCandidate, cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
@@ -284,34 +282,12 @@ namespace PersonalFinanceManager.Data.Repositories
             }
         }
 
-        private async Task NullDuplicateReferencesAsync(SqlConnection connection, SqlTransaction transaction, long importedTransactionId, CancellationToken cancellationToken)
-        {
-            await using SqlCommand command = connection.CreateCommand();
-            command.Transaction = transaction;
-
-            command.CommandText = _sqlResources.Read("DuplicateReview/NullDuplicateReferences.sql");
-
-            command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task DeleteTransactionLinksAsync(SqlConnection connection, SqlTransaction transaction, long importedTransactionId, CancellationToken cancellationToken)
-        {
-            await using SqlCommand command = connection.CreateCommand();
-            command.Transaction = transaction;
-
-            command.CommandText = _sqlResources.Read("DuplicateReview/DeleteTransactionLinks.sql");
-
-            command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
         private async Task DeleteImportedTransactionAsync(SqlConnection connection, SqlTransaction transaction, long importedTransactionId, CancellationToken cancellationToken)
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
 
-            command.CommandText = _sqlResources.Read("DuplicateReview/DeleteImportedTransaction.sql");
+            command.CommandText = _sqlResources.Read("Transactions/DeleteTransaction.sql");
 
             command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -340,13 +316,19 @@ namespace PersonalFinanceManager.Data.Repositories
             {
                 CandidateImportRow candidate = await GetCandidateAsync(connection, transaction, importRowId, cancellationToken).ConfigureAwait(false);
 
-                if (!string.Equals(candidate.Status, "DuplicateReview", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(candidate.Status, "DuplicateAccepted", StringComparison.OrdinalIgnoreCase) && candidate.AcceptedTransactionId.HasValue)
                 {
-                    throw new InvalidOperationException("Only pending duplicate review rows can be approved.");
+                    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                    return candidate.AcceptedTransactionId.Value;
+                }
+
+                if (!IsRecoverableCandidate(candidate.Status))
+                {
+                    throw new InvalidOperationException("Only pending or exact-skipped duplicate rows can be accepted.");
                 }
 
                 long transactionId = await InsertApprovedTransactionAsync(connection, transaction, candidate, cancellationToken).ConfigureAwait(false);
-                await UpdateImportRowStatusAsync(connection, transaction, importRowId, "DuplicateAccepted", "Approved and added as a transaction.", cancellationToken).ConfigureAwait(false);
+                await UpdateImportRowStatusAsync(connection, transaction, importRowId, "DuplicateAccepted", "Approved and added as a transaction.", transactionId, cancellationToken).ConfigureAwait(false);
                 await UpdateBatchCountsAsync(connection, transaction, candidate.ImportBatchId, cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 return transactionId;
@@ -368,12 +350,18 @@ namespace PersonalFinanceManager.Data.Repositories
             {
                 CandidateImportRow candidate = await GetCandidateAsync(connection, transaction, importRowId, cancellationToken).ConfigureAwait(false);
 
-                if (!string.Equals(candidate.Status, "DuplicateReview", StringComparison.OrdinalIgnoreCase))
+                if (string.Equals(candidate.Status, "DuplicateIgnored", StringComparison.OrdinalIgnoreCase))
                 {
-                    throw new InvalidOperationException("Only pending duplicate review rows can be ignored.");
+                    await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+                    return;
                 }
 
-                await UpdateImportRowStatusAsync(connection, transaction, importRowId, "DuplicateIgnored", "Ignored from duplicate review and not added as a transaction.", cancellationToken).ConfigureAwait(false);
+                if (!IsRecoverableCandidate(candidate.Status))
+                {
+                    throw new InvalidOperationException("Only pending or exact-skipped duplicate rows can be ignored.");
+                }
+
+                await UpdateImportRowStatusAsync(connection, transaction, importRowId, "DuplicateIgnored", "Ignored from duplicate review and not added as a transaction.", null, cancellationToken).ConfigureAwait(false);
                 await UpdateBatchCountsAsync(connection, transaction, candidate.ImportBatchId, cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -414,6 +402,7 @@ namespace PersonalFinanceManager.Data.Repositories
                 ImportRowId = reader.GetInt64Value("ImportRowId"),
                 ImportBatchId = reader.GetInt64Value("ImportBatchId"),
                 Status = reader.GetStringOrEmpty("Status"),
+                AcceptedTransactionId = reader.GetInt64OrNull("AcceptedTransactionId"),
                 AccountId = reader.GetInt32Value("AccountId"),
                 TransactionDate = date.Value,
                 PostingDate = reader.GetDateOnlyOrNull("PostingDate"),
@@ -468,7 +457,7 @@ namespace PersonalFinanceManager.Data.Repositories
             return Convert.ToInt64(value);
         }
 
-        private async Task UpdateImportRowStatusAsync(SqlConnection connection, SqlTransaction transaction, long importRowId, string status, string note, CancellationToken cancellationToken)
+        private async Task UpdateImportRowStatusAsync(SqlConnection connection, SqlTransaction transaction, long importRowId, string status, string note, long? acceptedTransactionId, CancellationToken cancellationToken)
         {
             await using SqlCommand command = connection.CreateCommand();
             command.Transaction = transaction;
@@ -478,7 +467,11 @@ namespace PersonalFinanceManager.Data.Repositories
             command.Parameters.Add(SqlParameters.NVarChar("@Status", status, 30));
             command.Parameters.Add(SqlParameters.NVarChar("@Note", note, 1000));
             command.Parameters.Add(SqlParameters.BigInt("@ImportRowId", importRowId));
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            command.Parameters.Add(SqlParameters.BigInt("@AcceptedTransactionId", acceptedTransactionId));
+            if (await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false) != 1)
+            {
+                throw new InvalidOperationException("The duplicate candidate was resolved by another operation.");
+            }
         }
 
         private async Task UpdateBatchCountsAsync(SqlConnection connection, SqlTransaction transaction, long importBatchId, CancellationToken cancellationToken)
@@ -551,6 +544,10 @@ namespace PersonalFinanceManager.Data.Repositories
             return candidate.Amount > 0 && !InferTransfer(candidate);
         }
 
+        private static bool IsRecoverableCandidate(string status) =>
+            string.Equals(status, "DuplicateReview", StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(status, "ExactDuplicateSkipped", StringComparison.OrdinalIgnoreCase);
+
         private static bool InferTransfer(CandidateImportRow candidate)
         {
             return string.Equals(candidate.Category, "Transfer", StringComparison.OrdinalIgnoreCase) || string.Equals(candidate.SpendingClass, "PayPal Funding", StringComparison.OrdinalIgnoreCase) || string.Equals(candidate.SpendingClass, "Credit Card Payment", StringComparison.OrdinalIgnoreCase);
@@ -580,6 +577,7 @@ namespace PersonalFinanceManager.Data.Repositories
             public long ImportRowId { get; set; }
             public long ImportBatchId { get; set; }
             public string Status { get; set; } = string.Empty;
+            public long? AcceptedTransactionId { get; set; }
             public int AccountId { get; set; }
             public DateOnly TransactionDate { get; set; }
             public DateOnly? PostingDate { get; set; }

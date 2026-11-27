@@ -22,6 +22,7 @@ namespace PersonalFinanceManager.Core.Models
         public int NormalizedBankTransferRows { get; set; }
         public bool FileHashPreviouslyImported { get; set; }
         public IReadOnlyList<ImportedTransaction> PreviewRows { get; set; } = Array.Empty<ImportedTransaction>();
+        public IReadOnlyList<ParseError> ParseWarnings { get; set; } = Array.Empty<ParseError>();
         public IReadOnlyList<ParseError> ParseErrors { get; set; } = Array.Empty<ParseError>();
     }
 }

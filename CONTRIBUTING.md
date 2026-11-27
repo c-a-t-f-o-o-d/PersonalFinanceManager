@@ -25,6 +25,16 @@ Run:
 
 This performs the repository privacy audit, restores packages, builds Debug and Release, and runs tests.
 
+To include SQL integration tests on Windows, start LocalDB and enable the test fixture before building:
+
+```powershell
+sqllocaldb start MSSQLLocalDB
+$env:PFM_RUN_SQL_TESTS = "1"
+.\build.ps1
+```
+
+These tests create and remove isolated databases named `PFM_Integrity_<guid>` on `(localdb)\MSSQLLocalDB`. They use synthetic activity to verify migration replay, duplicate approval, transfers, wallet funding, credit repayments, statement reconciliation, and backups. They do not use the application's saved connection string. The build pull-request job runs this suite; other environments skip it when the opt-in setting is absent.
+
 If you need to check for private local terms, use an untracked file:
 
 ```powershell

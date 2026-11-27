@@ -1,4 +1,5 @@
 using PersonalFinanceManager.Core.Models;
+using PersonalFinanceManager.Core.Reporting;
 using PersonalFinanceManager.Data.Repositories;
 using PersonalFinanceManager.Application.Services.Contracts;
 
@@ -14,6 +15,12 @@ namespace PersonalFinanceManager.Data.Services
             _accountRepository = accountRepository ?? throw new ArgumentNullException(nameof(accountRepository));
             _reportRepository = reportRepository ?? throw new ArgumentNullException(nameof(reportRepository));
         }
+
+        public Task<ExpenseReportResult> GetExpenseReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
+            => _reportRepository.GetExpenseReportAsync(filter, cancellationToken);
+
+        public Task<CashFlowReportResult> GetCashFlowReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)
+            => _reportRepository.GetCashFlowReportAsync(filter, cancellationToken);
 
         public Task<IReadOnlyList<Account>> GetAccountsAsync(CancellationToken cancellationToken = default)
         {

@@ -126,7 +126,7 @@ namespace PersonalFinanceManager.Core.Imports
                 postDate = parsedPostDate;
             }
 
-            if (!decimal.TryParse(amountText, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal amount))
+            if (!ImportAmountParser.TryParse(amountText, out decimal amount))
             {
                 error = $"Invalid amount '{amountText}'.";
                 return null;

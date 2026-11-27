@@ -12,11 +12,10 @@ namespace PersonalFinanceManager.Core.Salary
         {
             ArgumentNullException.ThrowIfNull(input);
             Validate(input);
-            decimal spouseMonthlyNetIncome = Math.Max(0M, input.SpouseMonthlyNetIncome);
-            decimal targetMonthlyTakeHome = Math.Max(0M, input.TargetMonthlySpending + input.MonthlyCushion - spouseMonthlyNetIncome);
+            decimal targetMonthlyTakeHome = input.TargetMonthlySpending + input.MonthlyCushion;
             decimal targetAnnualTakeHome = targetMonthlyTakeHome * 12M;
 
-            if (targetAnnualTakeHome <= 0M)
+            if (CalculateAnnualTakeHome(0M, input) >= targetAnnualTakeHome)
             {
                 return BuildResult(0M, input, targetMonthlyTakeHome);
             }
@@ -24,8 +23,9 @@ namespace PersonalFinanceManager.Core.Salary
             decimal low = 0M;
             decimal high = Math.Max(50000M, targetAnnualTakeHome * 2M);
 
-            while (CalculateAnnualTakeHome(high, input) < targetAnnualTakeHome && high < 2000000M)
+            while (CalculateAnnualTakeHome(high, input) < targetAnnualTakeHome)
             {
+                if (high >= 1000000000000M) throw new ArgumentOutOfRangeException(nameof(input), "The requested salary is outside the supported planning range.");
                 high *= 1.5M;
             }
 
@@ -53,7 +53,7 @@ namespace PersonalFinanceManager.Core.Salary
             Validate(input);
             TaxComputation computation = ComputeTaxes(grossAnnualSalary, input);
 
-            return computation.HouseholdGrossAnnualIncome
+            return computation.CashBeforeModeledTax
                 - computation.FederalIncomeTax
                 - computation.SocialSecurityTax
                 - computation.MedicareTax
@@ -158,9 +158,10 @@ namespace PersonalFinanceManager.Core.Salary
         {
             TaxComputation computation = ComputeTaxes(grossAnnualSalary, input);
             decimal totalTax = computation.FederalIncomeTax + computation.SocialSecurityTax + computation.MedicareTax + computation.AdditionalMedicareTax;
-            decimal estimatedAnnualTakeHome = computation.HouseholdGrossAnnualIncome - totalTax - computation.AnnualPreTaxDeductions - computation.AnnualPostTaxDeductions;
+            decimal estimatedAnnualTakeHome = computation.CashBeforeModeledTax - totalTax - computation.AnnualPreTaxDeductions - computation.AnnualPostTaxDeductions;
             decimal payPeriods = Math.Max(1, input.PayPeriodsPerYear);
             decimal householdGross = computation.HouseholdGrossAnnualIncome;
+            decimal taxRateBase = input.SpouseIncomeMode == SpouseIncomeMode.PostedNet ? grossAnnualSalary : householdGross;
 
             return new SalaryRequirementResult
             {
@@ -168,7 +169,9 @@ namespace PersonalFinanceManager.Core.Salary
                 RequiredGrossMonthlySalary = RoundCurrency(grossAnnualSalary / 12M),
                 RequiredGrossPerPayPeriod = RoundCurrency(grossAnnualSalary / payPeriods),
                 SpouseAnnualGrossIncome = RoundCurrency(input.SpouseAnnualGrossIncome),
-                SpouseMonthlyNetIncome = RoundCurrency(input.SpouseMonthlyNetIncome),
+                SpouseMonthlyNetIncome = input.SpouseIncomeMode == SpouseIncomeMode.PostedNet ? RoundCurrency(input.SpouseMonthlyNetIncome) : 0M,
+                SpouseIncomeMode = input.SpouseIncomeMode,
+                CashBeforeModeledTax = RoundCurrency(computation.CashBeforeModeledTax),
                 HouseholdGrossAnnualIncome = RoundCurrency(householdGross),
                 TargetMonthlyTakeHome = RoundCurrency(targetMonthlyTakeHome),
                 EstimatedMonthlyTakeHome = RoundCurrency(estimatedAnnualTakeHome / 12M),
@@ -181,8 +184,8 @@ namespace PersonalFinanceManager.Core.Salary
                 TotalEstimatedTax = totalTax,
                 AnnualPreTaxDeductions = computation.AnnualPreTaxDeductions,
                 AnnualPostTaxDeductions = computation.AnnualPostTaxDeductions,
-                EffectiveTaxRate = householdGross > 0M ? decimal.Round(totalTax / householdGross * 100M, 2, MidpointRounding.AwayFromZero) : 0M,
-                EffectiveTotalWithholdingRate = householdGross > 0M ? decimal.Round((totalTax + computation.AnnualPreTaxDeductions + computation.AnnualPostTaxDeductions) / householdGross * 100M, 2, MidpointRounding.AwayFromZero) : 0M,
+                EffectiveTaxRate = taxRateBase > 0M ? decimal.Round(totalTax / taxRateBase * 100M, 2, MidpointRounding.AwayFromZero) : 0M,
+                EffectiveTotalWithholdingRate = taxRateBase > 0M ? decimal.Round((totalTax + computation.AnnualPreTaxDeductions + computation.AnnualPostTaxDeductions) / taxRateBase * 100M, 2, MidpointRounding.AwayFromZero) : 0M,
                 StandardDeduction = GetStandardDeduction(input.FilingStatus),
                 FederalTaxableIncome = RoundCurrency(computation.FederalTaxableIncome),
                 SocialSecurityTaxableWages = RoundCurrency(computation.SocialSecurityTaxableWages),
@@ -196,34 +199,41 @@ namespace PersonalFinanceManager.Core.Salary
 
         private static TaxComputation ComputeTaxes(decimal grossAnnualSalary, SalaryRequirementInput input)
         {
-            decimal spouseGrossAnnualIncome = Math.Max(0M, input.SpouseAnnualGrossIncome);
-            decimal householdGrossAnnualIncome = Math.Max(0M, grossAnnualSalary) + spouseGrossAnnualIncome;
+            decimal employeeGross = Math.Max(0M, grossAnnualSalary);
+            decimal spouseGross = input.FilingStatus == FilingStatus.MarriedFilingJointly ? input.SpouseAnnualGrossIncome : 0M;
+            bool postedNet = input.SpouseIncomeMode == SpouseIncomeMode.PostedNet;
             decimal annualFederalOnlyDeductions = input.PreTaxFederalOnlyMonthly * 12M;
             decimal annualFicaExemptDeductions = input.PreTaxFederalAndFicaMonthly * 12M;
-            decimal annualPreTaxDeductions = annualFederalOnlyDeductions + annualFicaExemptDeductions;
-            decimal annualPostTaxDeductions = input.PostTaxMonthlyDeductions * 12M;
             int totalLegacyAllowances = CalculateAppliedLegacyAllowances(input);
             decimal legacyAllowanceAdjustment = totalLegacyAllowances * input.LegacyAllowanceAnnualValue;
-            decimal federalTaxableIncome = Math.Max(0M, householdGrossAnnualIncome - annualFederalOnlyDeductions - annualFicaExemptDeductions - GetStandardDeduction(input.FilingStatus) - legacyAllowanceAdjustment);
+            decimal householdTaxableIncome = Math.Max(0M, employeeGross + spouseGross - annualFederalOnlyDeductions - annualFicaExemptDeductions - GetStandardDeduction(input.FilingStatus) - legacyAllowanceAdjustment);
             SalaryRequirementCalculator calculator = new();
-            decimal federalIncomeTax = calculator.CalculateFederalIncomeTax(federalTaxableIncome, input.FilingStatus);
-            decimal employeeFicaWages = Math.Max(0M, grossAnnualSalary - annualFicaExemptDeductions);
-            decimal spouseFicaWages = spouseGrossAnnualIncome;
-            decimal socialSecurityTaxableWages = Math.Min(employeeFicaWages, SocialSecurityWageBase) + Math.Min(spouseFicaWages, SocialSecurityWageBase);
-            decimal medicareTaxableWages = employeeFicaWages + spouseFicaWages;
+            decimal federalTax = calculator.CalculateFederalIncomeTax(householdTaxableIncome, input.FilingStatus);
+            decimal employeeFicaWages = Math.Max(0M, employeeGross - annualFicaExemptDeductions);
+            decimal spouseAllowances = input.UseLegacyAllowanceEstimate && spouseGross > 0M ? input.SpouseLegacyAllowances * input.LegacyAllowanceAnnualValue : 0M;
+            decimal additionalMedicare = CalculateAdditionalMedicareTax(employeeFicaWages + spouseGross, input.FilingStatus);
 
+            if (postedNet)
+            {
+                decimal spouseTaxableIncome = Math.Max(0M, spouseGross - GetStandardDeduction(input.FilingStatus) - spouseAllowances);
+                federalTax = Math.Max(0M, federalTax - calculator.CalculateFederalIncomeTax(spouseTaxableIncome, input.FilingStatus));
+                additionalMedicare = Math.Max(0M, additionalMedicare - CalculateAdditionalMedicareTax(spouseGross, input.FilingStatus));
+            }
+
+            decimal modeledSpouseWages = postedNet ? 0M : spouseGross;
             return new TaxComputation
             {
-                AnnualPreTaxDeductions = annualPreTaxDeductions,
-                AnnualPostTaxDeductions = annualPostTaxDeductions,
-                HouseholdGrossAnnualIncome = householdGrossAnnualIncome,
-                FederalTaxableIncome = federalTaxableIncome,
-                FederalIncomeTax = federalIncomeTax,
-                SocialSecurityTax = CalculateSocialSecurityTax(employeeFicaWages) + CalculateSocialSecurityTax(spouseFicaWages),
-                MedicareTax = CalculateMedicareTax(medicareTaxableWages),
-                AdditionalMedicareTax = CalculateAdditionalMedicareTax(medicareTaxableWages, input.FilingStatus),
-                SocialSecurityTaxableWages = socialSecurityTaxableWages,
-                MedicareTaxableWages = medicareTaxableWages,
+                AnnualPreTaxDeductions = annualFederalOnlyDeductions + annualFicaExemptDeductions,
+                AnnualPostTaxDeductions = input.PostTaxMonthlyDeductions * 12M,
+                HouseholdGrossAnnualIncome = employeeGross + spouseGross,
+                CashBeforeModeledTax = employeeGross + (postedNet ? input.SpouseMonthlyNetIncome * 12M : spouseGross),
+                FederalTaxableIncome = householdTaxableIncome,
+                FederalIncomeTax = federalTax,
+                SocialSecurityTax = CalculateSocialSecurityTax(employeeFicaWages) + CalculateSocialSecurityTax(modeledSpouseWages),
+                MedicareTax = CalculateMedicareTax(employeeFicaWages + modeledSpouseWages),
+                AdditionalMedicareTax = additionalMedicare,
+                SocialSecurityTaxableWages = Math.Min(employeeFicaWages, SocialSecurityWageBase) + Math.Min(modeledSpouseWages, SocialSecurityWageBase),
+                MedicareTaxableWages = employeeFicaWages + modeledSpouseWages,
                 TotalLegacyAllowances = totalLegacyAllowances,
                 LegacyAllowanceAdjustment = legacyAllowanceAdjustment
             };
@@ -246,12 +256,13 @@ namespace PersonalFinanceManager.Core.Salary
             return
             [
                 CreateLine("Required gross salary", grossAnnualSalary, "Minimum rounded annual salary estimate for your income input"),
-                CreateLine("Spouse gross income", input.SpouseAnnualGrossIncome, "Optional gross household income input for tax context"),
-                CreateLine("Spouse posted net income", input.SpouseMonthlyNetIncome * 12M, "Owner-classified spouse income already available for household spending"),
-                CreateLine("Household gross income", computation.HouseholdGrossAnnualIncome, "Required salary plus spouse gross income"),
+                CreateLine("Spouse gross income", input.SpouseAnnualGrossIncome, input.SpouseIncomeMode == SpouseIncomeMode.PostedNet ? "Tax-bracket context only; not counted again as available cash" : "Spouse cash modeled from gross income"),
+                CreateLine("Spouse posted net income", input.SpouseIncomeMode == SpouseIncomeMode.PostedNet ? input.SpouseMonthlyNetIncome * 12M : 0M, "Counted once in posted-net mode; not used in gross-income mode"),
+                CreateLine("Household gross income", computation.HouseholdGrossAnnualIncome, "Gross income for tax context"),
+                CreateLine("Cash before modeled tax", computation.CashBeforeModeledTax, "Your gross plus either spouse posted net or spouse gross, according to the selected mode"),
                 CreateLine("Federal taxable income", computation.FederalTaxableIncome, "Household gross minus standard deduction, pre-tax deductions, and legacy allowance estimate"),
                 CreateLine("Legacy W-4 allowances", -computation.LegacyAllowanceAdjustment, $"{computation.TotalLegacyAllowances} allowance(s) × {input.LegacyAllowanceAnnualValue:C0}; current W-4 forms do not use allowances"),
-                CreateLine("Federal income tax", -computation.FederalIncomeTax, "Estimated annual federal income tax after standard deduction"),
+                CreateLine("Federal income tax", -computation.FederalIncomeTax, input.SpouseIncomeMode == SpouseIncomeMode.PostedNet ? "Incremental tax on your modeled salary; spouse posted income is already net" : "Estimated household federal income tax after standard deduction"),
                 CreateLine("Social Security", -computation.SocialSecurityTax, "6.2% up to the 2026 wage base per worker"),
                 CreateLine("Medicare", -computation.MedicareTax, "1.45% on Medicare taxable wages"),
                 CreateLine("Additional Medicare", -computation.AdditionalMedicareTax, "0.9% above the applicable household threshold"),
@@ -282,6 +293,10 @@ namespace PersonalFinanceManager.Core.Salary
 
         private static void Validate(SalaryRequirementInput input)
         {
+            if (!Enum.IsDefined(input.SpouseIncomeMode)) throw new ArgumentOutOfRangeException(nameof(input.SpouseIncomeMode));
+            if (input.SpouseIncomeMode == SpouseIncomeMode.EstimatedFromGross && input.SpouseAnnualGrossIncome > 0M && input.FilingStatus != FilingStatus.MarriedFilingJointly)
+                throw new ArgumentException("Spouse gross-income modeling requires Married Filing Jointly. Use posted net income for separate tax households.", nameof(input));
+
             if (input.TargetMonthlySpending < 0M)
             {
                 throw new ArgumentOutOfRangeException(nameof(input.TargetMonthlySpending));
@@ -328,6 +343,7 @@ namespace PersonalFinanceManager.Core.Salary
             public decimal AnnualPreTaxDeductions { get; set; }
             public decimal AnnualPostTaxDeductions { get; set; }
             public decimal HouseholdGrossAnnualIncome { get; set; }
+            public decimal CashBeforeModeledTax { get; set; }
             public decimal FederalTaxableIncome { get; set; }
             public decimal FederalIncomeTax { get; set; }
             public decimal SocialSecurityTax { get; set; }

@@ -26,13 +26,14 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly NumericUpDown _yourAllowances = new();
         private readonly NumericUpDown _spouseAllowances = new();
         private readonly NumericUpDown _spouseGrossIncome = new();
-        private readonly CheckBox _useSpousePostedIncome = new() { Text = "Use spouse posted net income from transactions", Checked = true, AutoSize = true };
+        private readonly CheckBox _useSpousePostedIncome = new() { Text = "Use posted spouse net income (uncheck to model spouse gross)", Checked = true, AutoSize = true };
         private readonly Label _spousePostedIncomeSummary = new();
         private readonly NumericUpDown _allowanceAnnualValue = new();
         private readonly NumericUpDown _payPeriods = new();
         private readonly Label _modeHelp = new();
         private readonly Label _periodSummary = new();
         private readonly Label _scopeSummary = new();
+        private readonly TextBox _reviewNotes = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
         private readonly Label _spendingMetric = new();
         private readonly Label _salaryMetric = new();
         private readonly Label _takeHomeMetric = new();
@@ -396,7 +397,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
             Label help = new()
             {
-                Text = "Allowances are only used as a legacy planning estimate. Spouse allowances are applied only when spouse gross income is entered, so they will not reduce your salary target until that income is part of the calculation.",
+                Text = "Posted-net mode counts spouse deposits once; spouse gross supplies joint tax-bracket context only. Gross mode estimates spouse take-home and ignores posted deposits. Legacy allowances are a withholding estimate, not a reduction in tax liability.",
                 Dock = DockStyle.Fill,
                 Tag = "SecondaryText",
                 Padding = new Padding(0, 10, 16, 0)
@@ -606,6 +607,9 @@ namespace PersonalFinanceManager.App.UI.Views
             tabs.TabPages.Add(monthlyTab);
             ConfigureMonthlyGrid();
             monthlyTab.Controls.Add(_monthlyGrid);
+            TabPage notesTab = new("Review notes");
+            notesTab.Controls.Add(_reviewNotes);
+            tabs.TabPages.Add(notesTab);
         }
 
         private void ConfigureBreakdownGrid()
@@ -690,6 +694,7 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             HashSet<string> selectedKeys = GetSelectedBuckets().Select(BuildBucketKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
             SalarySpendingFilter filter = BuildScopeOptionFilter();
+            if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate) return;
             _scopeOptions = await _analysisService.GetSalarySpendingScopeOptionsAsync(filter).ConfigureAwait(true);
             _scopeList.SuspendLayout();
             _scopeList.Controls.Clear();
@@ -798,16 +803,50 @@ namespace PersonalFinanceManager.App.UI.Views
         private async Task RefreshAsync()
         {
             SalarySpendingFilter spendingFilter = BuildSpendingFilter();
+            if (spendingFilter.FromDate.HasValue && spendingFilter.ToDate.HasValue && spendingFilter.FromDate > spendingFilter.ToDate)
+            {
+                MessageBox.Show(this, "The start date must be on or before the end date.", "Salary Needed", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             SalarySpendingAnalysis spending = await _analysisService.GetSalarySpendingAnalysisAsync(spendingFilter).ConfigureAwait(true);
-            IReadOnlyList<IncomeOwnerSummary> incomeSummaries = await _analysisService.GetIncomeOwnerSummariesAsync(spendingFilter).ConfigureAwait(true);
+            IReadOnlyList<IncomeOwnerSummary> incomeSummaries = spending.IncomeOwnerSummaries;
             UpdateIncomeOwnerSummary(incomeSummaries);
+            if (!spending.Period.HasObservedTransactions) _spousePostedIncomeSummary.Text = "Posted income coverage is unknown for this period.";
+            _reviewNotes.Lines = spending.Warnings.ToArray();
+            _monthlySource.DataSource = spending.MonthlyTrend;
+            _inputSource.DataSource = spending.InputLines;
+            if (!spending.CanEstimate)
+            {
+                _salaryMetric.Text = "Review inputs";
+                _takeHomeMetric.Text = "Unknown";
+                _taxMetric.Text = "Unknown";
+                _spendingMetric.Text = "Review inputs";
+                _barChart.Result = null;
+                _breakdownSource.DataSource = null;
+                _periodSummary.Text = "A reliable salary estimate is unavailable. See Review notes for missing history, bill amounts, or overlapping inputs.";
+                return;
+            }
             SalaryRequirementInput input = BuildSalaryInput(spending.TargetMonthlySpending);
-            SalaryRequirementResult result = _calculator.CalculateRequiredSalary(input);
+            if (input.SpouseIncomeMode == SpouseIncomeMode.PostedNet && input.SpouseMonthlyNetIncome > 0M
+                && input.SpouseAnnualGrossIncome == 0M && input.FilingStatus == FilingStatus.MarriedFilingJointly)
+                _reviewNotes.Lines = spending.Warnings.Append("Spouse gross income is not supplied. The joint marginal-tax estimate may be too low; enter gross income for tax context when known.").ToArray();
+            SalaryRequirementResult result;
+            try { result = _calculator.CalculateRequiredSalary(input); }
+            catch (ArgumentException ex)
+            {
+                _salaryMetric.Text = "Review inputs";
+                _takeHomeMetric.Text = "Unknown";
+                _taxMetric.Text = "Unknown";
+                _barChart.Result = null;
+                _breakdownSource.DataSource = null;
+                _periodSummary.Text = ex.Message;
+                return;
+            }
             _monthlySource.DataSource = spending.MonthlyTrend;
             _inputSource.DataSource = spending.InputLines;
             _breakdownSource.DataSource = result.BreakdownLines;
             _barChart.Result = result;
-            _spendingMetric.Text = spending.TargetMonthlySpending.ToString("C2", CultureInfo.CurrentCulture);
+            _spendingMetric.Text = result.TargetMonthlyTakeHome.ToString("C2", CultureInfo.CurrentCulture);
             _salaryMetric.Text = result.RequiredGrossAnnualSalary.ToString("C0", CultureInfo.CurrentCulture);
             _takeHomeMetric.Text = result.EstimatedMonthlyTakeHome.ToString("C2", CultureInfo.CurrentCulture) + " / mo";
             _taxMetric.Text = result.TotalEstimatedTax.ToString("C0", CultureInfo.CurrentCulture) + $" ({result.EffectiveTaxRate:N2}%)";
@@ -854,8 +893,9 @@ namespace PersonalFinanceManager.App.UI.Views
                 YourLegacyAllowances = decimal.ToInt32(_yourAllowances.Value),
                 SpouseLegacyAllowances = decimal.ToInt32(_spouseAllowances.Value),
                 LegacyAllowanceAnnualValue = _allowanceAnnualValue.Value,
+                SpouseIncomeMode = _useSpousePostedIncome.Checked ? SpouseIncomeMode.PostedNet : SpouseIncomeMode.EstimatedFromGross,
                 SpouseAnnualGrossIncome = _spouseGrossIncome.Value,
-                SpouseMonthlyNetIncome = _useSpousePostedIncome.Checked ? _spousePostedMonthlyNetIncome : 0M,
+                SpouseMonthlyNetIncome = _useSpousePostedIncome.Checked ? Math.Max(0M, _spousePostedMonthlyNetIncome) : 0M,
                 FilingStatus = GetFilingStatus(),
                 PayPeriodsPerYear = decimal.ToInt32(_payPeriods.Value)
             };
@@ -903,8 +943,8 @@ namespace PersonalFinanceManager.App.UI.Views
             {
                 SalarySpendingMode.RequiredBillsOnly => "Uses only active required bills. This is useful for a bare-minimum survival number.",
                 SalarySpendingMode.SelectedCategoriesOnly => "Uses only the checked spending buckets below. Use this for focused questions such as groceries, medical, or gas only.",
-                SalarySpendingMode.RequiredBillsPlusSelectedCategories => "Uses required bills plus the checked day-to-day spending buckets. This is usually the most realistic controllable budget mode.",
-                _ => "Uses your complete cleaned expense trend. Income, transfers, PayPal funding rows, and credit-card payoff funding rows are excluded."
+                SalarySpendingMode.RequiredBillsPlusSelectedCategories => "Uses required bills plus selected net spending. Matching historical bill payments are replaced by planned bills; uncertain overlaps require review.",
+                _ => "Uses net expenses after refunds. Confirmed transfers, mirrored purchases, and allocated funding are excluded; import coverage still requires review."
             };
 
             UpdateScopeSummary();
@@ -982,7 +1022,7 @@ namespace PersonalFinanceManager.App.UI.Views
             base.OnPaint(e);
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
 
-            if (Result is null || Result.HouseholdGrossAnnualIncome <= 0M)
+            if (Result is null || Result.CashBeforeModeledTax <= 0M)
             {
                 DrawEmpty(e.Graphics);
                 return;
@@ -990,7 +1030,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
             Rectangle bounds = ClientRectangle;
             Rectangle chart = new(bounds.Left + 18, bounds.Top + 20, bounds.Width - 36, 50);
-            decimal gross = Result.HouseholdGrossAnnualIncome;
+            decimal gross = Result.CashBeforeModeledTax;
 
             List<Segment> segments =
             [

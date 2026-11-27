@@ -6,6 +6,8 @@ SET AppliedRuleId = @RuleId,
     IsIncome = COALESCE(@IsIncome, t.IsIncome),
     IsTransfer = COALESCE(@IsTransfer, t.IsTransfer),
     IncomeOwner = COALESCE(@IncomeOwner, t.IncomeOwner),
+    LegacyLinkTreatment = 0,
     UpdatedAtUtc = SYSUTCDATETIME()
 FROM dbo.ImportedTransaction AS t
-WHERE /*DESCRIPTION_CLAUSE*//*TYPE_CLAUSE*/;
+WHERE /*DESCRIPTION_CLAUSE*//*TYPE_CLAUSE*/
+  AND t.ClassificationIsManual = 0;

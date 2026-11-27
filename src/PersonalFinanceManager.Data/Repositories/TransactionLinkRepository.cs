@@ -139,24 +139,31 @@ namespace PersonalFinanceManager.Data.Repositories
         public async Task<long> SaveAsync(TransactionLinkEditModel model, CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(model);
-            Validate(model);
+            model.LinkType = TransactionLinkTypes.Normalize(model.LinkType);
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
+            await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
             try
             {
-                long linkId = model.TransactionLinkId == 0 ? await InsertAsync(connection, transaction, model, cancellationToken).ConfigureAwait(false) : await UpdateAsync(connection, transaction, model, cancellationToken).ConfigureAwait(false);
-
-                if (string.Equals(model.LinkType, "PayPalFunding", StringComparison.OrdinalIgnoreCase))
+                FinancialLinkState state = await FinancialLinkStore.LoadAsync(connection, transaction, _sqlResources, cancellationToken).ConfigureAwait(false);
+                FinancialLinkStore.Validate(state, model);
+                FinancialLink? previous = state.Links.FirstOrDefault(link => link.Id == model.TransactionLinkId);
+                if (previous is not null && (previous.SourceId != model.SourceTransactionId || previous.LinkedId != model.LinkedTransactionId
+                    || TransactionLinkTypes.Normalize(previous.Type) != model.LinkType))
                 {
-                    await ApplyPayPalFundingTreatmentCoreAsync(connection, transaction, new[] { linkId }, cancellationToken).ConfigureAwait(false);
+                    await RejectAsync(connection, transaction, previous.Id, cancellationToken).ConfigureAwait(false);
                 }
-                else if (string.Equals(model.LinkType, "CreditCardPaymentFunding", StringComparison.OrdinalIgnoreCase))
-                {
-                    await ApplyCreditCardPaymentTreatmentCoreAsync(connection, transaction, new[] { linkId }, cancellationToken).ConfigureAwait(false);
-                }
-
+                long linkId = model.TransactionLinkId == 0
+                    ? await InsertAsync(connection, transaction, model, cancellationToken).ConfigureAwait(false)
+                    : await UpdateAsync(connection, transaction, model, cancellationToken).ConfigureAwait(false);
+                await using SqlCommand clear = connection.CreateCommand();
+                clear.Transaction = transaction;
+                clear.CommandText = _sqlResources.Read("TransactionLinks/ClearRejection.sql");
+                clear.Parameters.Add(SqlParameters.BigInt("@SourceTransactionId", model.SourceTransactionId));
+                clear.Parameters.Add(SqlParameters.BigInt("@LinkedTransactionId", model.LinkedTransactionId));
+                clear.Parameters.Add(SqlParameters.NVarChar("@LinkType", model.LinkType, 100));
+                await clear.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
                 return linkId;
             }
@@ -171,65 +178,31 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = _sqlResources.Read("TransactionLinks/DeleteLink.sql");
-            command.Parameters.Add(SqlParameters.BigInt("@TransactionLinkId", transactionLinkId));
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        public async Task<int> ApplyPayPalFundingTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default)
-        {
-            return await ApplyTreatmentWithTransactionAsync(transactionLinkIds, ApplyPayPalFundingTreatmentCoreAsync, cancellationToken).ConfigureAwait(false);
-        }
-
-        public async Task<int> ApplyCreditCardPaymentTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default)
-        {
-            return await ApplyTreatmentWithTransactionAsync(transactionLinkIds, ApplyCreditCardPaymentTreatmentCoreAsync, cancellationToken).ConfigureAwait(false);
-        }
-
-        public async Task<int> UndoPayPalFundingTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default)
-        {
-            List<long> ids = transactionLinkIds.Distinct().Where(id => id > 0).Take(1000).ToList();
-
-            if (ids.Count == 0)
-            {
-                return 0;
-            }
-
-            await using SqlConnection connection = _connectionFactory.CreateConnection();
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using SqlCommand command = connection.CreateCommand();
-            List<string> idParameters = AddIdParameters(command, ids);
-
-            command.CommandText = ReadSqlWithIds("TransactionLinks/UndoPayPalFundingTreatment.sql", idParameters);
-
-            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task<int> ApplyTreatmentWithTransactionAsync(IEnumerable<long> transactionLinkIds, Func<SqlConnection, SqlTransaction, IEnumerable<long>, CancellationToken, Task<int>> apply, CancellationToken cancellationToken)
-        {
-            List<long> ids = transactionLinkIds.Distinct().Where(id => id > 0).Take(1000).ToList();
-
-            if (ids.Count == 0)
-            {
-                return 0;
-            }
-
-            await using SqlConnection connection = _connectionFactory.CreateConnection();
-            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(cancellationToken).ConfigureAwait(false);
-
+            await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
             try
             {
-                int count = await apply(connection, transaction, ids, cancellationToken).ConfigureAwait(false);
+                await RejectAsync(connection, transaction, transactionLinkId, cancellationToken).ConfigureAwait(false);
+                await using SqlCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = _sqlResources.Read("TransactionLinks/DeleteLink.sql");
+                command.Parameters.Add(SqlParameters.BigInt("@TransactionLinkId", transactionLinkId));
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                 await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
-                return count;
             }
             catch
             {
                 await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
                 throw;
             }
+        }
+
+        private async Task RejectAsync(SqlConnection connection, SqlTransaction transaction, long id, CancellationToken cancellationToken)
+        {
+            await using SqlCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = _sqlResources.Read("TransactionLinks/RejectLink.sql");
+            command.Parameters.Add(SqlParameters.BigInt("@TransactionLinkId", id));
+            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private async Task<long> InsertAsync(SqlConnection connection, SqlTransaction transaction, TransactionLinkEditModel model, CancellationToken cancellationToken)
@@ -253,61 +226,6 @@ namespace PersonalFinanceManager.Data.Repositories
             return Convert.ToInt64(value);
         }
 
-        private async Task<int> ApplyPayPalFundingTreatmentCoreAsync(SqlConnection connection, SqlTransaction transaction, IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken)
-        {
-            return await ApplyLinkedFundingUpdateAsync(connection, transaction, transactionLinkIds, "PayPalFunding", "PayPal Funding", "Linked as PayPal funding transfer.", cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task<int> ApplyCreditCardPaymentTreatmentCoreAsync(SqlConnection connection, SqlTransaction transaction, IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken)
-        {
-            List<long> ids = transactionLinkIds.Distinct().Where(id => id > 0).Take(1000).ToList();
-
-            if (ids.Count == 0)
-            {
-                return 0;
-            }
-
-            await using SqlCommand command = connection.CreateCommand();
-            command.Transaction = transaction;
-            List<string> idParameters = AddIdParameters(command, ids);
-            command.CommandText = ReadSqlWithIds("TransactionLinks/ApplyCreditCardPaymentTreatment.sql", idParameters);
-
-            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        private async Task<int> ApplyLinkedFundingUpdateAsync(SqlConnection connection, SqlTransaction transaction, IEnumerable<long> transactionLinkIds, string linkType, string categoryType, string note, CancellationToken cancellationToken)
-        {
-            List<long> ids = transactionLinkIds.Distinct().Where(id => id > 0).Take(1000).ToList();
-
-            if (ids.Count == 0)
-            {
-                return 0;
-            }
-
-            await using SqlCommand command = connection.CreateCommand();
-            command.Transaction = transaction;
-            List<string> idParameters = AddIdParameters(command, ids);
-            command.CommandText = ReadSqlWithIds("TransactionLinks/ApplyLinkedFundingUpdate.sql", idParameters);
-            command.Parameters.Add(SqlParameters.NVarChar("@CategoryType", categoryType, 100));
-            command.Parameters.Add(SqlParameters.NVarChar("@Note", note, 1000));
-            command.Parameters.Add(SqlParameters.NVarChar("@LinkType", linkType, 100));
-            return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
-
-        private static List<string> AddIdParameters(SqlCommand command, IReadOnlyList<long> ids)
-        {
-            List<string> names = new();
-
-            for (int index = 0; index < ids.Count; index++)
-            {
-                string name = "@Id" + index.ToString(System.Globalization.CultureInfo.InvariantCulture);
-                names.Add(name);
-                command.Parameters.Add(SqlParameters.BigInt(name, ids[index]));
-            }
-
-            return names;
-        }
-
         private static void AddSaveParameters(SqlCommand command, TransactionLinkEditModel model)
         {
             command.Parameters.Add(SqlParameters.BigInt("@SourceTransactionId", model.SourceTransactionId));
@@ -315,40 +233,7 @@ namespace PersonalFinanceManager.Data.Repositories
             command.Parameters.Add(SqlParameters.NVarChar("@LinkType", model.LinkType.Trim(), 100));
             command.Parameters.Add(SqlParameters.Decimal("@AllocationAmount", model.AllocationAmount));
             command.Parameters.Add(SqlParameters.Int("@ConfidenceScore", model.ConfidenceScore));
-            command.Parameters.Add(SqlParameters.NVarChar("@Notes", model.Notes, 1000));
-        }
-
-        private static void Validate(TransactionLinkEditModel model)
-        {
-            if (model.SourceTransactionId <= 0)
-            {
-                throw new InvalidOperationException("A source transaction is required.");
-            }
-
-            if (model.LinkedTransactionId <= 0)
-            {
-                throw new InvalidOperationException("A linked transaction is required.");
-            }
-
-            if (model.SourceTransactionId == model.LinkedTransactionId)
-            {
-                throw new InvalidOperationException("A transaction cannot be linked to itself.");
-            }
-
-            if (string.IsNullOrWhiteSpace(model.LinkType))
-            {
-                throw new InvalidOperationException("A link type is required.");
-            }
-
-            if (model.AllocationAmount.HasValue && model.AllocationAmount.Value < 0)
-            {
-                throw new InvalidOperationException("Allocation amount cannot be negative.");
-            }
-
-            if (model.ConfidenceScore is < 0 or > 100)
-            {
-                throw new InvalidOperationException("Confidence must be between 0 and 100.");
-            }
+            command.Parameters.Add(SqlParameters.NVarChar("@Notes", model.Notes, 2000));
         }
 
         private string ReadSqlWithTopAndWhere(string resourcePath, int maxRows, string whereClause)
@@ -357,11 +242,6 @@ namespace PersonalFinanceManager.Data.Repositories
                 .Read(resourcePath)
                 .Replace("/*TOP_ROWS*/", maxRows.ToString(System.Globalization.CultureInfo.InvariantCulture), StringComparison.Ordinal)
                 .Replace("/*WHERE_CLAUSE*/", whereClause, StringComparison.Ordinal);
-        }
-
-        private string ReadSqlWithIds(string resourcePath, IReadOnlyList<string> idParameters)
-        {
-            return _sqlResources.Read(resourcePath).Replace("/*ID_LIST*/", string.Join(", ", idParameters), StringComparison.Ordinal);
         }
 
         private static TransactionLinkRecord MapLink(SqlDataReader reader)

@@ -15,6 +15,8 @@ SELECT TOP (/*MAX_ROWS*/)
     t.IsIncome,
     t.IsTransfer,
     t.IsManual,
+    t.ClassificationIsManual,
+    t.LegacyLinkTreatment,
     t.IncomeOwner,
     t.Notes,
     t.CreatedAtUtc,

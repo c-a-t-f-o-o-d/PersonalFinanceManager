@@ -5,7 +5,7 @@ namespace PersonalFinanceManager.Core.Models
         public long TransactionLinkId { get; set; }
         public long SourceTransactionId { get; set; }
         public long LinkedTransactionId { get; set; }
-        public string LinkType { get; set; } = "PayPalFunding";
+        public string LinkType { get; set; } = TransactionLinkTypes.PurchaseMirror;
         public decimal? AllocationAmount { get; set; }
         public int ConfidenceScore { get; set; } = 100;
         public string? Notes { get; set; }

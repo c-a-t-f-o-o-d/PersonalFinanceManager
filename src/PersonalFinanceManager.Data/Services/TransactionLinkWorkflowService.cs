@@ -47,21 +47,6 @@ namespace PersonalFinanceManager.Data.Services
             return _transactionLinkRepository.DeleteAsync(transactionLinkId, cancellationToken);
         }
 
-        public Task<int> ApplyPayPalFundingTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default)
-        {
-            return _transactionLinkRepository.ApplyPayPalFundingTreatmentAsync(transactionLinkIds, cancellationToken);
-        }
-
-        public Task<int> ApplyCreditCardPaymentTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default)
-        {
-            return _transactionLinkRepository.ApplyCreditCardPaymentTreatmentAsync(transactionLinkIds, cancellationToken);
-        }
-
-        public Task<int> UndoPayPalFundingTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default)
-        {
-            return _transactionLinkRepository.UndoPayPalFundingTreatmentAsync(transactionLinkIds, cancellationToken);
-        }
-
         public Task<DataFlowRepairSummary> RepairDataFlowAsync(CancellationToken cancellationToken = default)
         {
             return _importService.RepairDataFlowAsync(cancellationToken);

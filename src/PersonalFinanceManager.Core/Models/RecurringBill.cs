@@ -31,6 +31,7 @@ namespace PersonalFinanceManager.Core.Models
         public const string Weekly = "Weekly";
         public const string Biweekly = "Biweekly";
         public const string Quarterly = "Quarterly";
+        public const string Semiannual = "Semiannual";
         public const string Annual = "Annual";
     }
 

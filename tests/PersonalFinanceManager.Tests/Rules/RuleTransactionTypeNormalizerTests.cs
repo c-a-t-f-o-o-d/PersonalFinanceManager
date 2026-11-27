@@ -83,5 +83,14 @@ namespace PersonalFinanceManager.Tests.Rules
             Assert.AreEqual(RuleTransactionTypeNormalizer.Withdrawal, RuleTransactionTypeNormalizer.NormalizeRuleType("Sale"));
             Assert.AreEqual(RuleTransactionTypeNormalizer.Withdrawal, RuleTransactionTypeNormalizer.NormalizeRuleType("Debit"));
         }
+
+        [TestMethod]
+        public void Matches_SignedAmountOverridesContradictorySourceType()
+        {
+            Assert.IsFalse(RuleTransactionTypeNormalizer.Matches("Payment", -50m, "Deposit", RuleMatchModes.Exact));
+            Assert.IsTrue(RuleTransactionTypeNormalizer.Matches("Payment", -50m, "Withdrawal", RuleMatchModes.Exact));
+            Assert.IsFalse(RuleTransactionTypeNormalizer.Matches("Withdrawal", 50m, "Withdrawal", RuleMatchModes.Exact));
+            Assert.IsTrue(RuleTransactionTypeNormalizer.Matches("Withdrawal", 50m, "Deposit", RuleMatchModes.Exact));
+        }
     }
 }

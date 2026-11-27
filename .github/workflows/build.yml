@@ -14,5 +14,12 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Start SQL Server LocalDB
+        shell: pwsh
+        run: |
+          sqllocaldb start MSSQLLocalDB
+          if ($LASTEXITCODE -ne 0) { throw 'SQL Server LocalDB failed to start.' }
       - shell: pwsh
+        env:
+          PFM_RUN_SQL_TESTS: '1'
         run: ./scripts/verify-public-baseline.ps1 -SkipPackage

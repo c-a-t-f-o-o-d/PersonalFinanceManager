@@ -10,7 +10,7 @@ SELECT
     t1.ImportedTransactionId,
     t2.ImportedTransactionId,
     N'Pending',
-    N'Same transaction date, amount, type, description, and compatible memo appear under different accounts. Verify whether one account import was selected incorrectly or whether both entries are legitimate.',
+    N'Same transaction fields appear under different accounts. A wallet purchase and its card funding can both be legitimate account records. Review Transaction Links first; delete a row only when the source was imported into the wrong account or twice.',
     N'Needs Review'
 FROM dbo.ImportedTransaction AS t1
 INNER JOIN dbo.ImportedTransaction AS t2 ON t1.ImportedTransactionId < t2.ImportedTransactionId

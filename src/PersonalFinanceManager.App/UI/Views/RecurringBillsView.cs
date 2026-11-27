@@ -1,4 +1,5 @@
 using PersonalFinanceManager.Core.Models;
+using PersonalFinanceManager.Core.Planning;
 using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
@@ -151,7 +152,8 @@ namespace PersonalFinanceManager.App.UI.Views
             _candidateGrid.DataSource = _candidateSource;
             AddCandidateColumn("Payee", "Candidate Payee", 250);
             AddCandidateColumn("AccountNickname", "Account", 150);
-            AddCandidateColumn("AverageAmount", "Average", 95, "C2");
+            AddCandidateColumn("AverageAmount", "Per occurrence", 110, "C2");
+            AddCandidateColumn("FrequencyDescription", "Suggested frequency", 140);
             AddCandidateColumn("MinimumAmount", "Min", 85, "C2");
             AddCandidateColumn("MaximumAmount", "Max", 85, "C2");
             AddCandidateColumn("TransactionCount", "Count", 70);
@@ -306,26 +308,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            RecurringBill bill = new()
-            {
-                AccountId = candidate.AccountId,
-                BillName = candidate.Payee.Length > 200 ? candidate.Payee[..200] : candidate.Payee,
-                Payee = candidate.Payee,
-                Category = candidate.Category,
-                SpendingClass = candidate.SpendingClass,
-                RequirementType = candidate.SuggestedRequirementType,
-                TypicalAmount = candidate.AverageAmount,
-                DueDay = candidate.SuggestedDueDay,
-                NextDueDate = NextMonthlyDate(candidate.SuggestedDueDay),
-                Frequency = BillFrequencies.Monthly,
-                IsRequired = !string.Equals(candidate.SuggestedRequirementType, BillRequirementTypes.Want, StringComparison.OrdinalIgnoreCase),
-                IsActive = true,
-                SourceDescription = candidate.SourceDescription,
-                FirstSeenDate = candidate.FirstSeenDate,
-                LastSeenDate = candidate.LastSeenDate,
-                TransactionCount = candidate.TransactionCount,
-                Notes = "Created from recurring transaction candidate."
-            };
+            RecurringBill bill = RecurringBillCandidateDetector.CreateDraft(candidate, DateOnly.FromDateTime(DateTime.Today));
 
             using RecurringBillEditForm form = new(bill, _accounts, _categories, _categoryTypes, _requirementTypes);
 
@@ -337,20 +320,5 @@ namespace PersonalFinanceManager.App.UI.Views
             }
         }
 
-        private static DateOnly NextMonthlyDate(int dueDay)
-        {
-            DateOnly today = DateOnly.FromDateTime(DateTime.Today);
-            int validDay = Math.Clamp(dueDay, 1, DateTime.DaysInMonth(today.Year, today.Month));
-            DateOnly candidate = new(today.Year, today.Month, validDay);
-
-            if (candidate < today)
-            {
-                DateOnly nextMonth = today.AddMonths(1);
-                int nextDay = Math.Clamp(dueDay, 1, DateTime.DaysInMonth(nextMonth.Year, nextMonth.Month));
-                return new DateOnly(nextMonth.Year, nextMonth.Month, nextDay);
-            }
-
-            return candidate;
-        }
     }
 }

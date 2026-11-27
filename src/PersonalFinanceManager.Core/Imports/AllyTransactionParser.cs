@@ -47,6 +47,7 @@ namespace PersonalFinanceManager.Core.Imports
                 }
             }
 
+            ImportOccurrenceIdentity identities = new();
             for (int index = 1; index < records.Count; index++)
             {
                 CsvRecord record = records[index];
@@ -58,6 +59,7 @@ namespace PersonalFinanceManager.Core.Imports
                     continue;
                 }
 
+                transaction.ExternalTransactionId = identities.Next("ALLY", transaction);
                 result.Rows.Add(transaction);
             }
 
@@ -114,9 +116,15 @@ namespace PersonalFinanceManager.Core.Imports
                 time = parsedTime;
             }
 
-            if (!decimal.TryParse(amountText.Trim(), NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal amount))
+            if (!ImportAmountParser.TryParse(amountText, out decimal amount))
             {
                 error = $"Invalid amount '{amountText}'.";
+                return null;
+            }
+
+            if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(description))
+            {
+                error = "Transaction type and description are required.";
                 return null;
             }
 

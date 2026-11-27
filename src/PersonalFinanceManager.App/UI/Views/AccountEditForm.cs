@@ -1,4 +1,5 @@
 using System.Globalization;
+using PersonalFinanceManager.Core.Common;
 using PersonalFinanceManager.Core.Models;
 
 namespace PersonalFinanceManager.App.UI.Views
@@ -6,6 +7,7 @@ namespace PersonalFinanceManager.App.UI.Views
     public sealed class AccountEditForm : Form
     {
         private readonly Dictionary<string, Control> _fields = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, Field> _definitions = new(StringComparer.OrdinalIgnoreCase);
         private readonly ToolTip _toolTip = new();
 
         public AccountEditForm(Account account)
@@ -42,7 +44,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 Field.Text("Institution", "Institution"),
                 Field.Text("BaseUrl", "Base URL"),
                 Field.Text("AccountSummaryUrl", "Account Summary URL"),
-                Field.Combo("AccountType", "Account Type", new[] { "Checking", "Savings", "Credit Card", "Mortgage", "Vehicle Loan", "Personal Loan", "Investment", "401k", "IRA", "PayPal Smart Connect", "Other" }),
+                Field.Combo("AccountType", "Account Type", new[] { "Checking", "Savings", "Cash", "Money Market", "PayPal", "Apple Cash", "Credit Card", "PayPal Smart Connect", "PayPal Credit", "Mortgage", "Vehicle Loan", "Personal Loan", "Investment", "401k", "IRA", "Other" }),
                 Field.Combo("AccountOwner", "Account Owner", OwnerValues.All),
                 Field.Text("AccountNumber", "Account Number")
             });
@@ -52,6 +54,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 Field.Decimal("PrincipalBalance", "Principal Balance"),
                 Field.Decimal("AvailableBalance", "Available Balance"),
                 Field.Decimal("CurrentBalance", "Current Balance"),
+                Field.Date("BalanceAsOfDate", "Balance As Of (yyyy-MM-dd)"),
                 Field.Decimal("OriginalLoanAmount", "Original Loan Amount"),
                 Field.Decimal("CurrentInterestRate", "Current Interest Rate"),
                 Field.Decimal("PaidInFullDiscount", "Paid In Full Discount")
@@ -94,8 +97,21 @@ namespace PersonalFinanceManager.App.UI.Views
             };
 
             root.Controls.Add(buttons, 0, 1);
-            Button save = new() { Text = "Save", DialogResult = DialogResult.OK, Width = 100 };
-            save.Click += (_, _) => SaveAccount();
+            Button save = new() { Text = "Save", Width = 100 };
+            save.Click += (_, _) =>
+            {
+                try
+                {
+                    ValidateFields();
+                    SaveAccount();
+                    DialogResult = DialogResult.OK;
+                    Close();
+                }
+                catch (FormatException ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Account", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                }
+            };
             buttons.Controls.Add(save);
             Button cancel = new() { Text = "Cancel", DialogResult = DialogResult.Cancel, Width = 100 };
             buttons.Controls.Add(cancel);
@@ -132,6 +148,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 layout.Controls.Add(label, 0, row);
                 layout.Controls.Add(control, 1, row);
                 _fields[field.Name] = control;
+                _definitions[field.Name] = field;
             }
 
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
@@ -175,6 +192,7 @@ namespace PersonalFinanceManager.App.UI.Views
             Set("PrincipalBalance", Account.PrincipalBalance);
             Set("AvailableBalance", Account.AvailableBalance);
             Set("CurrentBalance", Account.CurrentBalance);
+            Set("BalanceAsOfDate", Account.BalanceAsOfDate);
             Set("OriginalLoanAmount", Account.OriginalLoanAmount);
             Set("CurrentInterestRate", Account.CurrentInterestRate);
             Set("LastPaymentAmount", Account.LastPaymentAmount);
@@ -245,6 +263,7 @@ namespace PersonalFinanceManager.App.UI.Views
             Account.PrincipalBalance = GetDecimal("PrincipalBalance");
             Account.AvailableBalance = GetDecimal("AvailableBalance");
             Account.CurrentBalance = GetDecimal("CurrentBalance");
+            Account.BalanceAsOfDate = GetDate("BalanceAsOfDate");
             Account.OriginalLoanAmount = GetDecimal("OriginalLoanAmount");
             Account.CurrentInterestRate = GetDecimal("CurrentInterestRate");
             Account.LastPaymentAmount = GetDecimal("LastPaymentAmount");
@@ -296,38 +315,47 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private decimal? GetDecimal(string name)
         {
-            string value = Get(name);
-
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return null;
-            }
-
-            return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out decimal parsed) ? parsed : null;
+            int scale = name is "CurrentInterestRate" or "NextPaymentInterest" ? 5 : 2;
+            return FinancialInputParser.OptionalDecimal(Get(name), _definitions[name].Label, scale);
         }
 
         private int? GetInt(string name)
         {
-            string value = Get(name);
-
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return null;
-            }
-
-            return int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed) ? parsed : null;
+            return FinancialInputParser.OptionalInteger(Get(name), _definitions[name].Label);
         }
 
         private DateOnly? GetDate(string name)
         {
-            string value = Get(name);
+            return FinancialInputParser.OptionalDate(Get(name), _definitions[name].Label);
+        }
 
-            if (string.IsNullOrWhiteSpace(value))
+        private void ValidateFields()
+        {
+            foreach (Field field in _definitions.Values)
             {
-                return null;
+                switch (field.Kind)
+                {
+                    case FieldKind.Decimal:
+                        _ = GetDecimal(field.Name);
+                        break;
+                    case FieldKind.Int:
+                        _ = GetInt(field.Name);
+                        break;
+                    case FieldKind.Date:
+                        _ = GetDate(field.Name);
+                        break;
+                }
             }
 
-            return DateOnly.TryParseExact(value, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly parsed) ? parsed : null;
+            if (string.IsNullOrWhiteSpace(Get("AccountNickname")) || string.IsNullOrWhiteSpace(Get("AccountType")))
+            {
+                throw new FormatException("Account nickname and account type are required.");
+            }
+
+            if (GetDate("BalanceAsOfDate") > DateOnly.FromDateTime(DateTime.Today))
+            {
+                throw new FormatException("Balance as-of date cannot be in the future.");
+            }
         }
 
         private static string? NullIfWhite(string value)

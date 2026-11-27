@@ -65,10 +65,11 @@ namespace PersonalFinanceManager.Data.Services
                 command.CommandText = _sqlResources.Read("BackupExport/CreateSqlBackup.sql");
 
                 command.Parameters.Add(SqlParameters.NVarChar("@FilePath", backupPath, 1000));
+                command.Parameters.Add(SqlParameters.NVarChar("@DatabaseName", _connectionFactory.DatabaseName, 128));
                 await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
                 succeeded = true;
                 verified = true;
-                message = "SQL Server backup created and verified.";
+                message = $"SQL Server backup of '{_connectionFactory.DatabaseName}' created and verified.";
             }
             catch (Exception ex)
             {
@@ -104,14 +105,18 @@ namespace PersonalFinanceManager.Data.Services
                 using ZipArchive archive = ZipFile.Open(exportPath, ZipArchiveMode.Create);
                 await using SqlConnection connection = _connectionFactory.CreateConnection();
                 await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+                await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
-                await WriteQueryToCsvAsync(archive, connection, "accounts.csv", _sqlResources.Read("BackupExport/ExportAccounts.sql"), cancellationToken).ConfigureAwait(false);
+                await WriteQueryToCsvAsync(archive, connection, transaction, "accounts.csv", _sqlResources.Read("BackupExport/ExportAccounts.sql"), cancellationToken).ConfigureAwait(false);
 
-                await WriteQueryToCsvAsync(archive, connection, "rules.csv", _sqlResources.Read("BackupExport/ExportRules.sql"), cancellationToken).ConfigureAwait(false);
+                await WriteQueryToCsvAsync(archive, connection, transaction, "rules.csv", _sqlResources.Read("BackupExport/ExportRules.sql"), cancellationToken).ConfigureAwait(false);
 
-                await WriteQueryToCsvAsync(archive, connection, "transactions.csv", _sqlResources.Read("BackupExport/ExportTransactions.sql"), cancellationToken).ConfigureAwait(false);
+                await WriteQueryToCsvAsync(archive, connection, transaction, "transactions.csv", _sqlResources.Read("BackupExport/ExportTransactions.sql"), cancellationToken).ConfigureAwait(false);
 
-                await WriteQueryToCsvAsync(archive, connection, "recurring_bills.csv", _sqlResources.Read("BackupExport/ExportRecurringBills.sql"), cancellationToken).ConfigureAwait(false);
+                await WriteQueryToCsvAsync(archive, connection, transaction, "recurring_bills.csv", _sqlResources.Read("BackupExport/ExportRecurringBills.sql"), cancellationToken).ConfigureAwait(false);
+                await WriteQueryToCsvAsync(archive, connection, transaction, "transaction_links.csv", _sqlResources.Read("BackupExport/ExportTransactionLinks.sql"), cancellationToken).ConfigureAwait(false);
+                await WriteQueryToCsvAsync(archive, connection, transaction, "statement_checks.csv", _sqlResources.Read("BackupExport/ExportReconciliations.sql"), cancellationToken).ConfigureAwait(false);
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
 
                 succeeded = true;
                 message = "Portable CSV export created. SQL backup is still recommended for full-fidelity restore.";
@@ -162,16 +167,17 @@ namespace PersonalFinanceManager.Data.Services
                 throw new InvalidOperationException("Choose a backup/export folder first.");
             }
 
-            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss", CultureInfo.InvariantCulture);
-            return Path.Combine(folderPath.Trim(), $"{ApplicationIdentity.BackupFilePrefix}_{timestamp}.{extension}");
+            string timestamp = DateTime.UtcNow.ToString("yyyyMMdd_HHmmss_fff", CultureInfo.InvariantCulture);
+            return Path.Combine(folderPath.Trim(), $"{ApplicationIdentity.BackupFilePrefix}_{timestamp}_{Guid.NewGuid():N}.{extension}");
         }
 
-        private static async Task WriteQueryToCsvAsync(ZipArchive archive, SqlConnection connection, string entryName, string query, CancellationToken cancellationToken)
+        private static async Task WriteQueryToCsvAsync(ZipArchive archive, SqlConnection connection, SqlTransaction transaction, string entryName, string query, CancellationToken cancellationToken)
         {
             ZipArchiveEntry entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
             await using Stream stream = entry.Open();
             await using StreamWriter writer = new(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
             await using SqlCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
             command.CommandText = query;
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 

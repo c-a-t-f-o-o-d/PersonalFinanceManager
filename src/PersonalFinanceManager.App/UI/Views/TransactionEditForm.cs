@@ -17,6 +17,7 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly CheckBox _isIncome = new();
         private readonly CheckBox _isTransfer = new();
         private readonly CheckBox _isManual = new();
+        private readonly CheckBox _preserveClassification = new() { Text = "Keep these choices when rules are reapplied", AutoSize = true };
         private readonly ComboBox _incomeOwner = new();
         private readonly TextBox _notes = new();
         private readonly IReadOnlyList<Account> _accounts;
@@ -42,7 +43,7 @@ namespace PersonalFinanceManager.App.UI.Views
             Text = Transaction.ImportedTransactionId == 0 ? "Add Transaction" : "Edit Transaction";
             StartPosition = FormStartPosition.CenterParent;
             Width = 720;
-            Height = 650;
+            Height = 720;
             Font = new Font("Segoe UI", 9F);
             MinimizeBox = false;
             MaximizeBox = false;
@@ -52,7 +53,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 Dock = DockStyle.Fill,
                 ColumnCount = 2,
                 Padding = new Padding(12),
-                RowCount = 16
+                RowCount = 17
             };
 
             root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
@@ -88,6 +89,7 @@ namespace PersonalFinanceManager.App.UI.Views
             AddRow(root, 11, "Transfer", _isTransfer);
             AddRow(root, 12, "Manual", _isManual);
             AddRow(root, 13, "Notes", _notes, 82);
+            AddRow(root, 14, "Classification", _preserveClassification);
 
             FlowLayoutPanel buttons = new()
             {
@@ -109,7 +111,7 @@ namespace PersonalFinanceManager.App.UI.Views
             buttons.Controls.Add(save);
             buttons.Controls.Add(cancel);
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-            root.Controls.Add(buttons, 1, 14);
+            root.Controls.Add(buttons, 1, 15);
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             AcceptButton = save;
             CancelButton = cancel;
@@ -178,7 +180,7 @@ namespace PersonalFinanceManager.App.UI.Views
             _merchant.Text = Transaction.Merchant ?? string.Empty;
             _isIncome.Checked = Transaction.IsIncome;
             _incomeOwner.Text = Transaction.IncomeOwner ?? string.Empty;
-            _isTransfer.Checked = Transaction.IsTransfer;
+            _isTransfer.Checked = Transaction.IsTransfer && !Transaction.LegacyLinkTreatment;
             _isManual.Checked = Transaction.ImportedTransactionId == 0 || Transaction.IsManual;
             _notes.Text = Transaction.Notes ?? string.Empty;
         }
@@ -225,6 +227,7 @@ namespace PersonalFinanceManager.App.UI.Views
             Transaction.IncomeOwner = OwnerValues.Normalize(_incomeOwner.Text);
             Transaction.IsTransfer = _isTransfer.Checked;
             Transaction.IsManual = _isManual.Checked;
+            Transaction.ClassificationIsManual = _preserveClassification.Checked;
             Transaction.Notes = EmptyToNull(_notes.Text);
             return true;
         }

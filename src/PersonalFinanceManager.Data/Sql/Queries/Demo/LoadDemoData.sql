@@ -48,6 +48,8 @@ DECLARE @SavingsId int = (SELECT AccountId FROM dbo.Account WHERE AccountNicknam
 DECLARE @CardId int = (SELECT AccountId FROM dbo.Account WHERE AccountNickname = N'Demo Rewards Card');
 DECLARE @MortgageId int = (SELECT AccountId FROM dbo.Account WHERE AccountNickname = N'Demo Mortgage');
 
+UPDATE dbo.Account SET BalanceAsOfDate = @Today;
+
 INSERT INTO dbo.FinancialRule
 (
     RuleName,
@@ -107,7 +109,7 @@ VALUES
 (@CheckingId, DATEADD(day, 12, @TwoMonthsAgo), -142.55, N'Withdrawal', N'DEMO ELECTRIC COMPANY', @UtilityRuleId, N'Utilities', N'Electricity', N'Demo Electric Company', 0, 0, 0, N'Demo utility expense.', NULL),
 (@CheckingId, DATEADD(day, 20, @TwoMonthsAgo), -1600.00, N'Withdrawal', N'DEMO MORTGAGE PAYMENT', NULL, N'Loan Payment', N'Mortgage', N'Demo Mortgage Co', 0, 0, 0, N'Demo required bill.', NULL),
 (@CheckingId, DATEADD(day, 24, @TwoMonthsAgo), -410.00, N'Withdrawal', N'DEMO CREDIT CARD PAYMENT', @CardPaymentRuleId, N'Transfer', N'Credit Card Payment', N'Demo Credit', 0, 1, 0, N'Demo funding transfer.', NULL),
-(@CardId, DATEADD(day, 24, @TwoMonthsAgo), 410.00, N'Deposit', N'DEMO CREDIT CARD PAYMENT RECEIVED', @CardPaymentRuleId, N'Transfer', N'Credit Card Payment', N'Demo Credit', 0, 1, 0, N'Demo card payment received.', NULL),
+(@CardId, DATEADD(day, 24, @TwoMonthsAgo), 410.00, N'Payment', N'DEMO CREDIT CARD PAYMENT RECEIVED', @CardPaymentRuleId, N'Transfer', N'Credit Card Payment', N'Demo Credit', 0, 1, 0, N'Demo card payment received.', NULL),
 (@SavingsId, DATEADD(day, 28, @TwoMonthsAgo), 33.94, N'Deposit', N'DEMO INTEREST PAID', @InterestRuleId, N'Interest', N'Yield', N'Demo Bank', 1, 0, 0, N'Demo interest row.', N'Household'),
 
 (@CheckingId, DATEADD(day, 1, @PreviousMonth), 4200.00, N'Deposit', N'DEMO PAYROLL ACME COMPANY', @PayrollRuleId, N'Payroll', N'Payroll', N'ACME Company', 1, 0, 0, N'Demo income row.', N'Household'),
@@ -117,7 +119,7 @@ VALUES
 (@CheckingId, DATEADD(day, 12, @PreviousMonth), -151.02, N'Withdrawal', N'DEMO ELECTRIC COMPANY', @UtilityRuleId, N'Utilities', N'Electricity', N'Demo Electric Company', 0, 0, 0, N'Demo utility expense.', NULL),
 (@CheckingId, DATEADD(day, 20, @PreviousMonth), -1600.00, N'Withdrawal', N'DEMO MORTGAGE PAYMENT', NULL, N'Loan Payment', N'Mortgage', N'Demo Mortgage Co', 0, 0, 0, N'Demo required bill.', NULL),
 (@CheckingId, DATEADD(day, 23, @PreviousMonth), -390.00, N'Withdrawal', N'DEMO CREDIT CARD PAYMENT', @CardPaymentRuleId, N'Transfer', N'Credit Card Payment', N'Demo Credit', 0, 1, 0, N'Demo funding transfer.', NULL),
-(@CardId, DATEADD(day, 23, @PreviousMonth), 390.00, N'Deposit', N'DEMO CREDIT CARD PAYMENT RECEIVED', @CardPaymentRuleId, N'Transfer', N'Credit Card Payment', N'Demo Credit', 0, 1, 0, N'Demo card payment received.', NULL),
+(@CardId, DATEADD(day, 23, @PreviousMonth), 390.00, N'Payment', N'DEMO CREDIT CARD PAYMENT RECEIVED', @CardPaymentRuleId, N'Transfer', N'Credit Card Payment', N'Demo Credit', 0, 1, 0, N'Demo card payment received.', NULL),
 (@SavingsId, DATEADD(day, 28, @PreviousMonth), 34.15, N'Deposit', N'DEMO INTEREST PAID', @InterestRuleId, N'Interest', N'Yield', N'Demo Bank', 1, 0, 0, N'Demo interest row.', N'Household'),
 
 (@CheckingId, DATEADD(day, 1, @ThisMonth), 4200.00, N'Deposit', N'DEMO PAYROLL ACME COMPANY', @PayrollRuleId, N'Payroll', N'Payroll', N'ACME Company', 1, 0, 0, N'Demo income row.', N'Household'),
@@ -186,8 +188,8 @@ INSERT INTO dbo.TransactionLink
     ConfidenceScore,
     Notes
 )
-SELECT checking.ImportedTransactionId,
-       card.ImportedTransactionId,
+SELECT card.ImportedTransactionId,
+       checking.ImportedTransactionId,
        N'CreditCardPaymentFunding',
        100,
        N'Demo credit card payment funding link.'

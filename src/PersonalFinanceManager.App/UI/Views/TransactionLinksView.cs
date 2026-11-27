@@ -111,14 +111,14 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel actionRow = new()
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 8,
+                ColumnCount = 5,
                 RowCount = 1,
                 BackColor = UiTheme.CardBackground
             };
 
-            for (int index = 0; index < 8; index++)
+            for (int index = 0; index < 5; index++)
             {
-                actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 12.5F));
+                actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
             }
 
             filterLayout.Controls.Add(actionRow, 0, 1);
@@ -134,18 +134,9 @@ namespace PersonalFinanceManager.App.UI.Views
             Button delete = MakeActionButton("Delete Link", false);
             delete.Click += async (_, _) => await DeleteAsync().ConfigureAwait(true);
             actionRow.Controls.Add(delete, 3, 0);
-            Button applyFunding = MakeActionButton("Apply PayPal Funding", false);
-            applyFunding.Click += async (_, _) => await ApplyPayPalFundingAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(applyFunding, 4, 0);
-            Button applyCreditCard = MakeActionButton("Apply Card Payment", false);
-            applyCreditCard.Click += async (_, _) => await ApplyCreditCardPaymentAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(applyCreditCard, 5, 0);
-            Button undoFunding = MakeActionButton("Undo Funding", false);
-            undoFunding.Click += async (_, _) => await UndoPayPalFundingAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(undoFunding, 6, 0);
             Button repair = MakeActionButton("Repair Data Links", false);
             repair.Click += async (_, _) => await RepairDataLinksAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(repair, 7, 0);
+            actionRow.Controls.Add(repair, 4, 0);
 
             CardPanel gridCard = new()
             {
@@ -298,7 +289,10 @@ namespace PersonalFinanceManager.App.UI.Views
                 _linkTypeFilter.Items.Add("PayPalFunding");
                 _linkTypeFilter.Items.Add("CreditCardPaymentFunding");
                 _linkTypeFilter.Items.Add("CreditCardPaymentAllocation");
-                _linkTypeFilter.Items.Add("AccountTransfer");
+                _linkTypeFilter.Items.Add(TransactionLinkTypes.BankTransfer);
+                _linkTypeFilter.Items.Add(TransactionLinkTypes.PurchaseMirror);
+                _linkTypeFilter.Items.Add(TransactionLinkTypes.PurchaseFundingAllocation);
+                _linkTypeFilter.Items.Add(TransactionLinkTypes.PurchaseRefund);
                 _linkTypeFilter.Items.Add("DebtPayment");
                 _linkTypeFilter.Items.Add("ManualReview");
             }
@@ -377,7 +371,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            DialogResult result = MessageBox.Show(this, $"Delete {selected.Count} selected link(s)? This removes the link record but does not delete either transaction.", "Delete Links", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+            DialogResult result = MessageBox.Show(this, $"Delete {selected.Count} selected link(s)? This removes the relationship, recalculates reporting, and prevents this pair from being linked automatically again. Both transactions are kept.", "Delete Links", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
             if (result != DialogResult.Yes)
             {
@@ -392,59 +386,10 @@ namespace PersonalFinanceManager.App.UI.Views
             await RefreshAsync().ConfigureAwait(true);
         }
 
-        private async Task ApplyPayPalFundingAsync()
-        {
-            List<TransactionLinkRecord> selected = GetSelectedLinks();
-
-            if (selected.Count == 0)
-            {
-                return;
-            }
-
-            int count = await _transactionLinkService.ApplyPayPalFundingTreatmentAsync(selected.Select(link => link.TransactionLinkId)).ConfigureAwait(true);
-            MessageBox.Show(this, $"Updated {count} linked funding transaction(s).", "Transaction Links", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            await RefreshAsync().ConfigureAwait(true);
-        }
-
-        private async Task ApplyCreditCardPaymentAsync()
-        {
-            List<TransactionLinkRecord> selected = GetSelectedLinks();
-
-            if (selected.Count == 0)
-            {
-                return;
-            }
-
-            int count = await _transactionLinkService.ApplyCreditCardPaymentTreatmentAsync(selected.Select(link => link.TransactionLinkId)).ConfigureAwait(true);
-            MessageBox.Show(this, $"Updated {count} credit card payment transaction row(s).", "Transaction Links", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            await RefreshAsync().ConfigureAwait(true);
-        }
-
-        private async Task UndoPayPalFundingAsync()
-        {
-            List<TransactionLinkRecord> selected = GetSelectedLinks();
-
-            if (selected.Count == 0)
-            {
-                return;
-            }
-
-            DialogResult result = MessageBox.Show(this, "Undo PayPal funding treatment for selected links? This sets linked funding rows back to Paypal/Paypal and clears the transfer flag.", "Undo Funding Treatment", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-
-            if (result != DialogResult.Yes)
-            {
-                return;
-            }
-
-            int count = await _transactionLinkService.UndoPayPalFundingTreatmentAsync(selected.Select(link => link.TransactionLinkId)).ConfigureAwait(true);
-            MessageBox.Show(this, $"Updated {count} linked transaction(s).", "Transaction Links", MessageBoxButtons.OK, MessageBoxIcon.Information);
-            await RefreshAsync().ConfigureAwait(true);
-        }
-
         private async Task RepairDataLinksAsync()
         {
             DataFlowRepairSummary summary = await _transactionLinkService.RepairDataFlowAsync().ConfigureAwait(true);
-            MessageBox.Show(this, $"Repair complete. PayPal funding links: {summary.LinkedFundingRows}. Linked PayPal rows normalized: {summary.NormalizedLinkedFundingRows}. Likely PayPal funding rows normalized: {summary.NormalizedLikelyPayPalFundingRows}. Credit card funding links: {summary.CreditCardFundingLinks}. Credit card allocations: {summary.CreditCardPaymentAllocations}. Linked card payment rows normalized: {summary.NormalizedCreditCardPaymentRows}. Likely card payment rows normalized: {summary.NormalizedLikelyCreditCardPaymentRows}. Potential duplicate groups: {summary.PotentialDuplicateGroups}.", "Transaction Links", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, $"Reconciliation complete. Purchase mirrors: {summary.LinkedFundingRows}. Debt/card payment funding links: {summary.CreditCardFundingLinks}. Internal transfers: {summary.BankTransferLinks}. Only unambiguous explicit account references are linked automatically. Use Add Link for combined funding, split payments, or missing references.", "Transaction Links", MessageBoxButtons.OK, MessageBoxIcon.Information);
             await LoadLinkTypesAsync().ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
         }

@@ -17,6 +17,8 @@ namespace PersonalFinanceManager.Core.Models
         public int TransactionCount { get; set; }
         public int MonthCount { get; set; }
         public int SuggestedDueDay { get; set; }
+        public string? SuggestedFrequency { get; set; }
+        public string FrequencyDescription => SuggestedFrequency ?? "Choose frequency";
         public bool AlreadyExists { get; set; }
     }
 }

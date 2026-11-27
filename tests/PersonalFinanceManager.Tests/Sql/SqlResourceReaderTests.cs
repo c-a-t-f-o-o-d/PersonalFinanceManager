@@ -10,9 +10,9 @@ namespace PersonalFinanceManager.Tests.Sql
         {
             SqlResourceReader reader = new();
 
-            string sql = reader.Read("Reports/GetExpenseMetricSummary.sql");
+            string sql = reader.Read("Reports/GetReportData.sql");
 
-            Assert.IsTrue(sql.Contains("TotalExpenses", StringComparison.Ordinal));
+            Assert.IsTrue(sql.Contains("Amount", StringComparison.Ordinal));
             Assert.IsTrue(sql.Contains("dbo.ImportedTransaction", StringComparison.Ordinal));
         }
 
@@ -102,10 +102,10 @@ namespace PersonalFinanceManager.Tests.Sql
         {
             SqlResourceReader reader = new();
 
-            string sql = reader.Read("RecurringBills/GetMonthlyCandidates.sql");
+            string sql = reader.Read("RecurringBills/GetBills.sql");
 
-            Assert.IsTrue(sql.Contains("dbo.ImportedTransaction", StringComparison.Ordinal));
-            Assert.IsTrue(sql.Contains("AlreadyExists", StringComparison.Ordinal));
+            Assert.IsTrue(sql.Contains("dbo.RecurringBill", StringComparison.Ordinal));
+            Assert.IsTrue(sql.Contains("AccountNickname", StringComparison.Ordinal));
         }
 
         [TestMethod]
@@ -149,17 +149,13 @@ namespace PersonalFinanceManager.Tests.Sql
 
 
         [TestMethod]
-        public void Read_LoadsEmbeddedSalaryReportSql()
+        public void Read_LoadsLedgerLinksAndBillsForFinancialReports()
         {
             SqlResourceReader reader = new();
-
-            string sql = reader.Read("Reports/Salary/GetSalarySpendingScopeOptions.sql");
-            string fragment = reader.Read("Reports/Fragments/ExpenseWhere.sql");
-
-            Assert.IsTrue(sql.Contains("SalarySpending", StringComparison.Ordinal) || sql.Contains("SpendingClass", StringComparison.Ordinal));
-            Assert.IsTrue(sql.Contains("/*EXPENSE_WHERE*/", StringComparison.Ordinal));
-            Assert.IsTrue(fragment.Contains("TransactionLink", StringComparison.Ordinal));
-            Assert.IsTrue(fragment.Contains("/*ALIAS*/", StringComparison.Ordinal));
+            string sql = reader.Read("Reports/GetReportData.sql");
+            Assert.IsTrue(sql.Contains("dbo.ImportedTransaction", StringComparison.Ordinal));
+            Assert.IsTrue(sql.Contains("dbo.TransactionLink", StringComparison.Ordinal));
+            Assert.IsTrue(sql.Contains("dbo.RecurringBill", StringComparison.Ordinal));
         }
 
         [TestMethod]

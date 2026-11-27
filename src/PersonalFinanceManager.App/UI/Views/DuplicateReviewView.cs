@@ -19,6 +19,7 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly TextBox _existingDetails = new();
         private readonly TextBox _reasonDetails = new();
         private IReadOnlyList<Account> _accounts = Array.Empty<Account>();
+        private bool _resolvingCandidate;
 
         public DuplicateReviewView(IDuplicateReviewWorkflowService duplicateReviewService)
         {
@@ -94,7 +95,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
             Label help = new()
             {
-                Text = "Exact same-account duplicates are skipped automatically. Questionable import overlap and same-data/different-account pairs appear here for review.",
+                Text = "Review overlapping imports. Exact-skipped rows can be recovered. Rows from different providers may represent a purchase and its funding; review Transaction Links before deleting either.",
                 Dock = DockStyle.Fill,
                 ForeColor = UiTheme.TextSecondary,
                 TextAlign = ContentAlignment.MiddleLeft
@@ -311,6 +312,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task ApproveSelectedAsync()
         {
+            if (_resolvingCandidate)
+            {
+                return;
+            }
+
             DuplicateReviewItem? item = GetSelectedItem();
 
             if (item is null)
@@ -324,25 +330,42 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            if (!string.Equals(item.Status, DuplicateReviewStatuses.ImportDuplicateReview, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(item.Status, DuplicateReviewStatuses.ImportDuplicateReview, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(item.Status, DuplicateReviewStatuses.ExactDuplicateSkipped, StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show(this, "Only import rows in Needs Review status can be accepted.", "Duplicate Review", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, "Only Needs Review or Exact Skipped import rows can be accepted.", "Duplicate Review", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            DialogResult result = MessageBox.Show(this, "Add this duplicate candidate as a real transaction?", "Accept duplicate", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            string prompt = string.Equals(item.Status, DuplicateReviewStatuses.ExactDuplicateSkipped, StringComparison.OrdinalIgnoreCase)
+                ? "Recover this exact-skipped row as a separate transaction? Confirm it is an additional real purchase or payment, not the same event imported twice."
+                : "Add this duplicate candidate as a real transaction?";
+            DialogResult result = MessageBox.Show(this, prompt, "Accept duplicate", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
             if (result != DialogResult.Yes)
             {
                 return;
             }
 
-            await _duplicateReviewWorkflowService.ApproveImportCandidateAsync(item.ImportRowId).ConfigureAwait(true);
-            await LoadDuplicatesAsync().ConfigureAwait(true);
+            _resolvingCandidate = true;
+            try
+            {
+                await _duplicateReviewWorkflowService.ApproveImportCandidateAsync(item.ImportRowId).ConfigureAwait(true);
+                await LoadDuplicatesAsync().ConfigureAwait(true);
+            }
+            finally
+            {
+                _resolvingCandidate = false;
+            }
         }
 
         private async Task IgnoreSelectedAsync()
         {
+            if (_resolvingCandidate)
+            {
+                return;
+            }
+
             DuplicateReviewItem? item = GetSelectedItem();
 
             if (item is null)
@@ -356,9 +379,10 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            if (!string.Equals(item.Status, DuplicateReviewStatuses.ImportDuplicateReview, StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(item.Status, DuplicateReviewStatuses.ImportDuplicateReview, StringComparison.OrdinalIgnoreCase) &&
+                !string.Equals(item.Status, DuplicateReviewStatuses.ExactDuplicateSkipped, StringComparison.OrdinalIgnoreCase))
             {
-                MessageBox.Show(this, "Only import rows in Needs Review status can be ignored.", "Duplicate Review", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, "Only Needs Review or Exact Skipped import rows can be ignored.", "Duplicate Review", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
@@ -369,8 +393,16 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            await _duplicateReviewWorkflowService.IgnoreImportCandidateAsync(item.ImportRowId).ConfigureAwait(true);
-            await LoadDuplicatesAsync().ConfigureAwait(true);
+            _resolvingCandidate = true;
+            try
+            {
+                await _duplicateReviewWorkflowService.IgnoreImportCandidateAsync(item.ImportRowId).ConfigureAwait(true);
+                await LoadDuplicatesAsync().ConfigureAwait(true);
+            }
+            finally
+            {
+                _resolvingCandidate = false;
+            }
         }
 
         private async Task KeepBothSelectedAsync()
@@ -538,6 +570,7 @@ namespace PersonalFinanceManager.App.UI.Views
             if (item.IsCrossAccountReview)
             {
                 builder.AppendLine("Cross-account review rows are already in Transactions.");
+                builder.AppendLine("A wallet purchase and its bank or card funding may both be valid records. Use Transaction Links to reconcile their economic effect before considering deletion.");
                 builder.AppendLine("Keep Both marks the pair legitimate and stops showing it as pending.");
                 builder.AppendLine("Delete Left removes the left/candidate transaction.");
                 builder.AppendLine("Delete Right removes the right/existing transaction.");
@@ -546,7 +579,7 @@ namespace PersonalFinanceManager.App.UI.Views
             {
                 builder.AppendLine("Accept / Add inserts the candidate into Transactions.");
                 builder.AppendLine("Ignore / Delete leaves the candidate out of Transactions and removes it from pending review.");
-                builder.AppendLine("Exact duplicates are skipped automatically and normally do not need review.");
+                builder.AppendLine("Exact Skipped rows can also be accepted when identical source fields represent a separate real event.");
             }
 
             return builder.ToString();

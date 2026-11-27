@@ -19,15 +19,15 @@ namespace PersonalFinanceManager.Tests.Imports
             -6.57
             0.00
             -6.57
+            ALLY BANK - Checking x-1234
+            USD
+            ID: ABC123
             04/04/2026
             Buyer Credit Payment
             USD
             -8.77
             0.00
             -8.77
-            ALLY BANK - Checking x-1234
-            USD
-            ID: ABC123
             PayPal Smart Connect
             USD
             ID: DEF456

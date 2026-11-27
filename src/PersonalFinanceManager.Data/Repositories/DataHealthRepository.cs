@@ -60,6 +60,21 @@ namespace PersonalFinanceManager.Data.Repositories
             return new[]
             {
                 new DataHealthCheckDefinition(
+                    DataHealthIssueCodes.LegacyLinkReview,
+                    "Reconciliation", "Warning", "Earlier transaction matches require confirmation",
+                    "Open Transaction Links and filter ManualReview. Verify the two statements and restore the appropriate relationship or delete the match. Unconfirmed entries remain visible in spending; reconcile them before relying on totals.",
+                    "DataHealth/Counts/LegacyLinkReview.sql"),
+                new DataHealthCheckDefinition(
+                    DataHealthIssueCodes.BalanceSnapshotDate,
+                    "Accounts", "Warning", "Saved balances need a current statement date",
+                    "Enter the balance as-of date and refresh snapshots older than 31 days. Reconcile statement activity; runway uses saved balances and does not advance them automatically from imports.",
+                    "DataHealth/Counts/BalanceSnapshotDate.sql"),
+                new DataHealthCheckDefinition(
+                    DataHealthIssueCodes.LegacyLinkTreatment,
+                    "Reconciliation", "Warning", "Legacy generated transfer classifications without a current link",
+                    "Review the original statement and recategorize these rows. Older versions overwrote their categories; the original choices cannot be recovered automatically.",
+                    "DataHealth/Counts/LegacyLinkTreatment.sql"),
+                new DataHealthCheckDefinition(
                     DataHealthIssueCodes.IncomeMissingOwner,
                     "Income",
                     "Warning",
@@ -122,6 +137,9 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             return issueCode switch
             {
+                DataHealthIssueCodes.LegacyLinkReview => "DataHealth/Details/LegacyLinkReview.sql",
+                DataHealthIssueCodes.BalanceSnapshotDate => "DataHealth/Details/BalanceSnapshotDate.sql",
+                DataHealthIssueCodes.LegacyLinkTreatment => "DataHealth/Details/LegacyLinkTreatment.sql",
                 DataHealthIssueCodes.IncomeMissingOwner => "DataHealth/Details/IncomeMissingOwner.sql",
                 DataHealthIssueCodes.MissingCategorization => "DataHealth/Details/MissingCategorization.sql",
                 DataHealthIssueCodes.SameAccountDuplicates => "DataHealth/Details/SameAccountDuplicates.sql",

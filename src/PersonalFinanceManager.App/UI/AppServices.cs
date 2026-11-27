@@ -34,7 +34,7 @@ namespace PersonalFinanceManager.App.UI
             ImportService importService = new(ConnectionFactory, ruleRepository);
 
             AnalysisService = new AnalysisService(accountRepository, reportRepository);
-            AccountWorkflowService = new AccountWorkflowService(accountRepository);
+            AccountWorkflowService = new AccountWorkflowService(accountRepository, new AccountReconciliationRepository(ConnectionFactory));
             RuleWorkflowService = new RuleWorkflowService(ruleRepository, importService);
             TransactionWorkflowService = new TransactionWorkflowService(accountRepository, ruleRepository, transactionRepository);
             ImportWorkflowService = new ImportWorkflowService(accountRepository, importService);

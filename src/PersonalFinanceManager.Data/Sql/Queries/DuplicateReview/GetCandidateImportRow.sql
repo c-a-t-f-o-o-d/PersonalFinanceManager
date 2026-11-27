@@ -2,6 +2,7 @@ SELECT
     r.ImportRowId,
     r.ImportBatchId,
     r.[Status],
+    r.AcceptedTransactionId,
     b.AccountId,
     r.TransactionDate,
     r.PostingDate,
@@ -20,6 +21,6 @@ SELECT
     r.IsIncome,
     r.IsTransfer,
     r.IncomeOwner
-FROM dbo.ImportRow AS r
+FROM dbo.ImportRow AS r WITH (UPDLOCK, HOLDLOCK)
 INNER JOIN dbo.ImportBatch AS b ON b.ImportBatchId = r.ImportBatchId
 WHERE r.ImportRowId = @ImportRowId;

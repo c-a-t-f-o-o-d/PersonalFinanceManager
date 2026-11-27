@@ -187,6 +187,7 @@ namespace PersonalFinanceManager.Data.Database
             await using SqlCommand command = connection.CreateCommand();
             command.CommandTimeout = 60;
             command.CommandText = _sqlResources.Read("Schema/CreateDatabaseIfMissing.sql");
+            command.Parameters.Add(SqlParameters.NVarChar("@DatabaseName", _connectionFactory.DatabaseName, 128));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
     }

@@ -229,12 +229,22 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = ReadSql("Transactions/DeleteTransaction.sql");
-            command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                await using SqlCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = ReadSql("Transactions/DeleteTransaction.sql");
+                command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                throw;
+            }
         }
-
 
         private string ReadSql(string relativePath)
         {
@@ -304,6 +314,7 @@ namespace PersonalFinanceManager.Data.Repositories
             command.Parameters.Add(SqlParameters.Bit("@IsIncome", transaction.IsIncome));
             command.Parameters.Add(SqlParameters.Bit("@IsTransfer", transaction.IsTransfer));
             command.Parameters.Add(SqlParameters.Bit("@IsManual", transaction.IsManual));
+            command.Parameters.Add(SqlParameters.Bit("@ClassificationIsManual", transaction.ClassificationIsManual));
             command.Parameters.Add(SqlParameters.NVarChar("@IncomeOwner", OwnerValues.Normalize(transaction.IncomeOwner), 50));
             command.Parameters.Add(SqlParameters.NVarChar("@Notes", transaction.Notes, 1000));
             command.Parameters.Add(SqlParameters.NVarChar("@RawRowHash", BuildRowHash(transaction), 64));
@@ -360,6 +371,9 @@ namespace PersonalFinanceManager.Data.Repositories
                 throw new InvalidOperationException("A transaction must be assigned to an account.");
             }
 
+            if (transaction.Amount < -9999999999999999.99m || transaction.Amount > 9999999999999999.99m || decimal.Round(transaction.Amount, 2) != transaction.Amount)
+                throw new InvalidOperationException("Transaction amounts must fit within 16 whole-number digits and two decimal places.");
+
             if (transaction.TransactionDate == default)
             {
                 throw new InvalidOperationException("A transaction date is required.");
@@ -403,6 +417,8 @@ namespace PersonalFinanceManager.Data.Repositories
                 IsIncome = reader.GetBooleanValue("IsIncome"),
                 IsTransfer = reader.GetBooleanValue("IsTransfer"),
                 IsManual = reader.GetBooleanValue("IsManual"),
+                ClassificationIsManual = reader.GetBooleanValue("ClassificationIsManual"),
+                LegacyLinkTreatment = reader.GetBooleanValue("LegacyLinkTreatment"),
                 IncomeOwner = reader.GetStringOrNull("IncomeOwner"),
                 Notes = reader.GetStringOrNull("Notes"),
                 CreatedAtUtc = reader.GetDateTimeValue("CreatedAtUtc"),
