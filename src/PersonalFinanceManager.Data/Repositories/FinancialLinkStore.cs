@@ -48,6 +48,6 @@ internal static class FinancialLinkStore
         if (source is null || linked is null) throw new InvalidOperationException("One of the selected transactions no longer exists.");
         if (model.TransactionLinkId != 0 && !state.Links.Any(l => l.Id == model.TransactionLinkId))
             throw new InvalidOperationException("The selected link no longer exists. Refresh and try again.");
-        FinancialLinkRules.Validate(model, source, linked, state.Links);
+        FinancialLinkRules.Validate(model, source, linked, state.Links, state.Transactions.ToDictionary(t => t.Id));
     }
 }

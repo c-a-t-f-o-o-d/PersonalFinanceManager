@@ -384,6 +384,42 @@ public sealed class FinancialTrackingSqlTests
         Assert.AreEqual(50m, await ExpensesAsync());
     }
 
+    [TestMethod]
+    [OSCondition(OperatingSystems.Windows)]
+    public async Task WalletRepaymentBankDebitAndCreditReceiptReconcileInEitherLinkOrder()
+    {
+        Account wallet = await AccountAsync("PayPal Wallet", "PayPal Wallet", "3333");
+        Account card = await AccountAsync("Smart Connect", "PayPal Smart Connect", "4444");
+        Account checking = await AccountAsync("Everyday Checking", "Checking", "1111");
+        await ImportAsync(wallet, [new(25, -500m, "Buyer Credit Payment", "CREDIT REPAYMENT", "W-PAY")]);
+        await ImportAsync(card, [new(25, 500m, "Payment", "PAYMENT RECEIVED", "C-PAY")], ImportProfileCodes.PayPalSmartConnectCsv);
+        await ImportAsync(checking, [new(25, -500m, "Withdrawal", "REPAYMENT", "B-PAY")]);
+        Assert.HasCount(0, await LinksAsync());
+        IReadOnlyList<ImportedTransaction> rows = await RowsAsync();
+        long walletId = rows.Single(row => row.ExternalTransactionId == "W-PAY").ImportedTransactionId;
+        long cardId = rows.Single(row => row.ExternalTransactionId == "C-PAY").ImportedTransactionId;
+        long bankId = rows.Single(row => row.ExternalTransactionId == "B-PAY").ImportedTransactionId;
+
+        foreach (bool mirrorFirst in new[] { true, false })
+        {
+            foreach (TransactionLinkRecord previous in await LinksAsync()) await _links.DeleteAsync(previous.TransactionLinkId);
+            TransactionLinkEditModel mirror = new() { SourceTransactionId = walletId, LinkedTransactionId = bankId, LinkType = TransactionLinkTypes.PurchaseMirror };
+            TransactionLinkEditModel funding = new() { SourceTransactionId = cardId, LinkedTransactionId = bankId, LinkType = TransactionLinkTypes.CreditCardPaymentFunding };
+            await _links.SaveAsync(mirrorFirst ? mirror : funding);
+            await _links.SaveAsync(mirrorFirst ? funding : mirror);
+            await _imports.ReapplyRulesAsync();
+            Assert.HasCount(2, await LinksAsync());
+            Assert.HasCount(3, await RowsAsync());
+            var expenses = await _reports.GetExpenseReportAsync(new ExpenseReportFilter());
+            var cash = await _reports.GetCashFlowReportAsync(new ExpenseReportFilter());
+            Assert.AreEqual(0m, expenses.Metrics.TotalExpenses);
+            Assert.AreEqual(500m, cash.Summary.TotalMoneyOut);
+            Assert.AreEqual(0m, cash.Summary.TotalMoneyIn);
+            Assert.IsEmpty(expenses.Warnings);
+            Assert.IsEmpty(cash.Warnings);
+        }
+    }
+
     private async Task<Account> AccountAsync(string name, string type, string lastFour)
     {
         Account account = new() { AccountNickname = name, Institution = "Example Institution", AccountType = type, AccountNumber = "00000000" + lastFour, IsActive = true };

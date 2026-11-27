@@ -177,6 +177,7 @@ public sealed class FinancialReportCalculator
     {
         FinancialLink[] relationships = storedLinks.Select((link, index) => new FinancialLink(link.TransactionLinkId > 0 ? link.TransactionLinkId : -index - 1,
             link.SourceTransactionId, link.LinkedTransactionId, TransactionLinkTypes.Normalize(link.LinkType), link.AllocationAmount)).ToArray();
+        IReadOnlyDictionary<long, FinancialLinkTransaction> validationTransactions = _transactions.Values.Select(ForLinkValidation).ToDictionary(t => t.Id);
         List<TransactionLinkRecord> valid = new();
         for (int index = 0; index < storedLinks.Count; index++)
         {
@@ -199,7 +200,7 @@ public sealed class FinancialReportCalculator
                 FinancialLinkRules.Validate(new TransactionLinkEditModel { TransactionLinkId = relationship.Id,
                     SourceTransactionId = relationship.SourceId, LinkedTransactionId = relationship.LinkedId,
                     LinkType = relationship.Type, AllocationAmount = relationship.AllocationAmount, ConfidenceScore = link.ConfidenceScore },
-                    ForLinkValidation(source), ForLinkValidation(linked), relationships);
+                    ForLinkValidation(source), ForLinkValidation(linked), relationships, validationTransactions);
                 valid.Add(link);
             }
             catch (InvalidOperationException)

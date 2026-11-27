@@ -5,7 +5,8 @@ namespace PersonalFinanceManager.Core.Models;
 public static class FinancialLinkRules
 {
     public static void Validate(TransactionLinkEditModel model, FinancialLinkTransaction source,
-        FinancialLinkTransaction linked, IEnumerable<FinancialLink> existing)
+        FinancialLinkTransaction linked, IEnumerable<FinancialLink> existing,
+        IReadOnlyDictionary<long, FinancialLinkTransaction>? transactions = null)
     {
         string type = TransactionLinkTypes.Normalize(model.LinkType);
         if (!TransactionLinkTypes.All.Contains(type)) throw new InvalidOperationException("Select a supported link type.");
@@ -36,13 +37,14 @@ public static class FinancialLinkRules
                 if (sameAccount || !AccountClassification.IsLiability(source.AccountType) || !AccountClassification.IsCash(linked.AccountType)
                     || linked.Amount != -source.Amount || !IsPayment(source))
                     throw new InvalidOperationException("Select a debt/card payment or payment reversal as source and its equal opposite cash-account movement as linked. Purchases are reconciled separately.");
-                if (others.Any(l => IsExclusive(l.Type) && Touches(l, source.Id, linked.Id)))
+                if (others.Any(l => IsExclusive(l.Type) && Touches(l, source.Id, linked.Id)
+                    && !IsRepaymentMirrorCompanion(l, type, source, linked, others, transactions)))
                     throw new InvalidOperationException("A payment already has a funding or transfer link. Remove it before choosing another funding transaction.");
                 break;
             case TransactionLinkTypes.PurchaseMirror:
                 if (sameAccount || source.Amount != linked.Amount)
                     throw new InvalidOperationException("A purchase mirror requires equal signed amounts in different accounts. Use funding allocations for combined or split debits.");
-                RequireCanonicalPurchase(others, source.Id, linked.Id);
+                RequireCanonicalPurchase(others.Where(l => !IsRepaymentMirrorCompanion(l, type, source, linked, others, transactions)), source.Id, linked.Id);
                 break;
             case TransactionLinkTypes.PurchaseFundingAllocation:
                 if (sameAccount || source.Amount >= 0 || linked.Amount >= 0 || !AccountClassification.IsWallet(source.AccountType))
@@ -73,6 +75,7 @@ public static class FinancialLinkRules
     public static IReadOnlyList<TransactionLinkEditModel> FindAutomaticLinks(IReadOnlyList<FinancialLinkTransaction> transactions,
         IReadOnlyList<FinancialLink> existing, IReadOnlyList<FinancialLinkRejection> rejected)
     {
+        IReadOnlyDictionary<long, FinancialLinkTransaction> byId = transactions.ToDictionary(t => t.Id);
         List<FinancialLink> known = existing.ToList();
         List<TransactionLinkEditModel> result = new();
         var byAmount = transactions.GroupBy(t => t.Amount).ToDictionary(g => g.Key, g => g.ToArray());
@@ -92,7 +95,8 @@ public static class FinancialLinkRules
                 bool referenceMatches = type switch
                 {
                     TransactionLinkTypes.PurchaseMirror => ReferencesAccount(source.FundingSource, candidate)
-                        && (AccountClassification.IsCash(candidate.AccountType) || AccountClassification.IsLiability(candidate.AccountType)),
+                        && (AccountClassification.IsCash(candidate.AccountType) || AccountClassification.IsLiability(candidate.AccountType))
+                        && CorroboratesWalletActivity(source, candidate),
                     TransactionLinkTypes.CreditCardPaymentFunding => ReferencesAccount(candidate.Description, source)
                         && LooksLikeDebtPayment(candidate, source) && AccountClassification.IsCash(candidate.AccountType),
                     _ => IsTransfer(candidate) && (SharedReference(source, candidate)
@@ -100,7 +104,7 @@ public static class FinancialLinkRules
                 };
                 if (!referenceMatches) continue;
                 TransactionLinkEditModel proposed = new() { SourceTransactionId = source.Id, LinkedTransactionId = candidate.Id, LinkType = type, ConfidenceScore = 100 };
-                try { Validate(proposed, source, candidate, known); candidates.Add(candidate); }
+                try { Validate(proposed, source, candidate, known, byId); candidates.Add(candidate); }
                 catch (InvalidOperationException) { }
             }
             if (candidates.Count != 1) continue;
@@ -122,6 +126,48 @@ public static class FinancialLinkRules
         string? lastFour = account.AccountNumberLastFour?.Trim();
         return lastFour is { Length: 4 } && lastFour.All(char.IsDigit) && !string.IsNullOrWhiteSpace(text)
             && Regex.IsMatch(text, @"(?<!\d)" + Regex.Escape(lastFour) + @"(?!\d)", RegexOptions.CultureInvariant);
+    }
+
+    private static bool CorroboratesWalletActivity(FinancialLinkTransaction wallet, FinancialLinkTransaction candidate)
+    {
+        string provider = wallet.AccountType + " " + wallet.AccountNickname + " " + wallet.Institution;
+        if (provider.Contains("PayPal", StringComparison.OrdinalIgnoreCase)
+            && Regex.IsMatch(candidate.Description, @"\bPAYPAL\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return true;
+        if (Regex.IsMatch(provider, @"\bAPPLE\s*PAY\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)
+            && Regex.IsMatch(candidate.Description, @"\bAPPLE\s*PAY\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return true;
+        if (wallet.IsTransfer && wallet.Type.Equals("Buyer Credit Payment", StringComparison.OrdinalIgnoreCase)
+            && Regex.IsMatch(candidate.Description, @"\b(?:SMART\s*CONNECT|PAYPAL\s*CREDIT)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)) return true;
+        if (wallet.ExternalTransactionId?.Trim().Length >= 6 && SharedReference(wallet, candidate)) return true;
+
+        string merchant = Regex.Replace(wallet.Description.ToUpperInvariant(), @"[^A-Z0-9]+", " ").Trim();
+        string counterpart = Regex.Replace(candidate.Description.ToUpperInvariant(), @"[^A-Z0-9]+", " ").Trim();
+        if (merchant.Length < 6 || merchant != counterpart) return false;
+        string[] generic = ["PAYMENT", "PURCHASE", "CARD", "CREDIT", "DEBIT", "TRANSFER", "WITHDRAWAL", "POS", "TRANSACTION",
+            "MOBILE", "ONLINE", "BANK", "CHECKING", "ACCOUNT", "WALLET", "FROM", "TO", "RECEIVED", "REPAYMENT"];
+        return merchant.Split(' ').Any(word => word.Length >= 3 && word.Any(char.IsLetter) && !generic.Contains(word));
+    }
+
+    private static bool IsRepaymentMirrorCompanion(FinancialLink companion, string proposedType,
+        FinancialLinkTransaction source, FinancialLinkTransaction bank, IReadOnlyList<FinancialLink> others,
+        IReadOnlyDictionary<long, FinancialLinkTransaction>? transactions)
+    {
+        bool funding = proposedType == TransactionLinkTypes.CreditCardPaymentFunding && companion.Type == TransactionLinkTypes.PurchaseMirror;
+        bool mirror = proposedType == TransactionLinkTypes.PurchaseMirror && companion.Type == TransactionLinkTypes.CreditCardPaymentFunding;
+        if ((!funding && !mirror) || companion.LinkedId != bank.Id || transactions is null
+            || !AccountClassification.IsCash(bank.AccountType) || AccountClassification.IsWallet(bank.AccountType)
+            || !transactions.TryGetValue(companion.SourceId, out FinancialLinkTransaction? otherSource)) return false;
+        FinancialLinkTransaction wallet = mirror ? source : otherSource;
+        FinancialLinkTransaction liability = funding ? source : otherSource;
+        if (!AccountClassification.IsWallet(wallet.AccountType) || !wallet.IsTransfer
+            || !wallet.Type.Equals("Buyer Credit Payment", StringComparison.OrdinalIgnoreCase)
+            || !AccountClassification.IsLiability(liability.AccountType) || !IsPayment(liability)
+            || wallet.AccountId == bank.AccountId || liability.AccountId == bank.AccountId
+            || wallet.Amount != bank.Amount || liability.Amount != -bank.Amount) return false;
+
+        // The wallet entry is a representation of this repayment, not a second use of the bank funds.
+        if (others.Count(l => l.Type == TransactionLinkTypes.CreditCardPaymentFunding && l.LinkedId == bank.Id) != (funding ? 0 : 1)) return false;
+        if (others.Count(l => l.Type == TransactionLinkTypes.PurchaseMirror && (l.LinkedId == bank.Id || l.SourceId == wallet.Id)) != (mirror ? 0 : 1)) return false;
+        return !others.Any(l => l.Type == TransactionLinkTypes.PurchaseFundingAllocation && (l.SourceId == wallet.Id || l.LinkedId == bank.Id));
     }
 
     private static bool LooksLikeDebtPayment(FinancialLinkTransaction candidate, FinancialLinkTransaction liability)
