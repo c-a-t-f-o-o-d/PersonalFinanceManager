@@ -302,12 +302,14 @@ namespace PersonalFinanceManager.App.UI
             }
 
             bool databaseReady = await InitializeDatabaseAsync().ConfigureAwait(true);
+
             if (!databaseReady)
             {
                 return;
             }
 
             DialogResult result = MessageBox.Show(this, "Load sanitized demo accounts, transactions, rules, and bills into the current empty database? Demo data can only be loaded when the database has no accounts, rules, transactions, or bills.", "Load demo data", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
             if (result != DialogResult.Yes)
             {
                 return;
@@ -315,7 +317,7 @@ namespace PersonalFinanceManager.App.UI
 
             try
             {
-                PersonalFinanceManager.Core.Models.DemoDataLoadResult loadResult = await _services.DemoDataService.LoadDemoDataAsync().ConfigureAwait(true);
+                Core.Models.DemoDataLoadResult loadResult = await _services.DemoDataService.LoadDemoDataAsync().ConfigureAwait(true);
                 MessageBox.Show(this, loadResult.Message, "Demo data loaded", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 ShowAccounts();
             }

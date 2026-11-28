@@ -34,9 +34,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("DataHealth/SyncTransactionOwnersFromAccounts.sql");
-
             return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
         }
 
@@ -51,7 +49,6 @@ namespace PersonalFinanceManager.Data.Repositories
 
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-
             return await QueryAsync(connection, _sqlResources.Read(resourcePath), cancellationToken).ConfigureAwait(false);
         }
 
@@ -59,6 +56,26 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             return new[]
             {
+                new DataHealthCheckDefinition(
+                    DataHealthIssueCodes.ImportClassificationReview,
+                    "Imports", "Warning", "Imported activity needs financial classification",
+                    "Open Transactions and confirm whether each entry is income, a refund, an expense, or a transfer. Set its type and financial flags after checking the statement. A category change alone does not establish the financial treatment of an unclassified credit.",
+                    "DataHealth/Counts/ImportClassificationReview.sql"),
+                new DataHealthCheckDefinition(
+                    DataHealthIssueCodes.LegacyLinkReview,
+                    "Reconciliation", "Warning", "Earlier transaction matches require confirmation",
+                    "Open Transaction Links and filter ManualReview. Verify the two statements and restore the appropriate relationship or delete the match. Unconfirmed entries remain visible in spending; reconcile them before relying on totals.",
+                    "DataHealth/Counts/LegacyLinkReview.sql"),
+                new DataHealthCheckDefinition(
+                    DataHealthIssueCodes.BalanceSnapshotDate,
+                    "Accounts", "Warning", "Saved balances need a current statement date",
+                    "Enter the balance as-of date and refresh snapshots older than 31 days. Reconcile statement activity; runway uses saved balances and does not advance them automatically from imports.",
+                    "DataHealth/Counts/BalanceSnapshotDate.sql"),
+                new DataHealthCheckDefinition(
+                    DataHealthIssueCodes.LegacyLinkTreatment,
+                    "Reconciliation", "Warning", "Legacy generated transfer classifications without a current link",
+                    "Review the original statement and recategorize these rows. Older versions overwrote their categories; the original choices cannot be recovered automatically.",
+                    "DataHealth/Counts/LegacyLinkTreatment.sql"),
                 new DataHealthCheckDefinition(
                     DataHealthIssueCodes.IncomeMissingOwner,
                     "Income",
@@ -122,6 +139,10 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             return issueCode switch
             {
+                DataHealthIssueCodes.ImportClassificationReview => "DataHealth/Details/ImportClassificationReview.sql",
+                DataHealthIssueCodes.LegacyLinkReview => "DataHealth/Details/LegacyLinkReview.sql",
+                DataHealthIssueCodes.BalanceSnapshotDate => "DataHealth/Details/BalanceSnapshotDate.sql",
+                DataHealthIssueCodes.LegacyLinkTreatment => "DataHealth/Details/LegacyLinkTreatment.sql",
                 DataHealthIssueCodes.IncomeMissingOwner => "DataHealth/Details/IncomeMissingOwner.sql",
                 DataHealthIssueCodes.MissingCategorization => "DataHealth/Details/MissingCategorization.sql",
                 DataHealthIssueCodes.SameAccountDuplicates => "DataHealth/Details/SameAccountDuplicates.sql",

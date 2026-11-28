@@ -5,6 +5,8 @@ namespace PersonalFinanceManager.Core.Salary
         public decimal RequiredGrossAnnualSalary { get; set; }
         public decimal RequiredGrossMonthlySalary { get; set; }
         public decimal RequiredGrossPerPayPeriod { get; set; }
+        public SpouseIncomeMode SpouseIncomeMode { get; set; }
+        public decimal CashBeforeModeledTax { get; set; }
         public decimal SpouseAnnualGrossIncome { get; set; }
         public decimal SpouseMonthlyNetIncome { get; set; }
         public decimal HouseholdGrossAnnualIncome { get; set; }

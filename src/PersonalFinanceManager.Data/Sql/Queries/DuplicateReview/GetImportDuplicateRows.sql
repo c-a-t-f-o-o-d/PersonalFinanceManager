@@ -11,7 +11,7 @@ SELECT TOP (/*MAX_ROWS*/)
     b.OriginalFileName,
     b.AccountId,
     a.AccountNickname,
-    CAST(NULL AS bigint) AS CandidateTransactionId,
+    r.AcceptedTransactionId AS CandidateTransactionId,
     a.AccountNickname AS CandidateAccountNickname,
     r.TransactionDate AS CandidateDate,
     r.PostingDate AS CandidatePostingDate,

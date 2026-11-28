@@ -16,12 +16,6 @@ namespace PersonalFinanceManager.Application.Services.Contracts
 
         Task DeleteAsync(long transactionLinkId, CancellationToken cancellationToken = default);
 
-        Task<int> ApplyPayPalFundingTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default);
-
-        Task<int> ApplyCreditCardPaymentTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default);
-
-        Task<int> UndoPayPalFundingTreatmentAsync(IEnumerable<long> transactionLinkIds, CancellationToken cancellationToken = default);
-
         Task<DataFlowRepairSummary> RepairDataFlowAsync(CancellationToken cancellationToken = default);
     }
 }

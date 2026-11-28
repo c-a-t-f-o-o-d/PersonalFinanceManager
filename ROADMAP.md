@@ -25,7 +25,7 @@ PersonalFinanceManager is under active development. This roadmap focuses on publ
 
 - Improve import-profile management and import preview behavior.
 - Add richer duplicate-review workflows.
-- Add more transaction-link review tools for credit cards, PayPal, and internal transfers.
+- Add more transaction-link review tools for credit accounts, digital wallets, and internal transfers.
 - Improve recurring bill detection and required-expense modeling.
 - Expand salary-needed, runway, and cash-flow analysis.
 - Add savings-goal and account-purpose tracking.

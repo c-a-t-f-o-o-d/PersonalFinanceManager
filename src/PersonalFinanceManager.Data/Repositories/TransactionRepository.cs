@@ -98,7 +98,6 @@ namespace PersonalFinanceManager.Data.Repositories
 
             int maxRows = Math.Clamp(filter.MaxRows <= 0 ? 1000 : filter.MaxRows, 1, 10000);
             string where = clauses.Count == 0 ? string.Empty : "WHERE " + string.Join(" AND ", clauses);
-
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
@@ -138,9 +137,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = ReadSql("Transactions/GetTransactionById.sql");
-
             command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
             return await reader.ReadAsync(cancellationToken).ConfigureAwait(false) ? Map(reader) : null;
@@ -183,9 +180,7 @@ namespace PersonalFinanceManager.Data.Repositories
                 command.Parameters.Add(SqlParameters.BigInt(name, ids[index]));
             }
 
-            command.CommandText = ReadSql("Transactions/UpdateCategorizationByIds.sql")
-                .Replace("/*ID_LIST*/", string.Join(", ", idParameters), StringComparison.Ordinal);
-
+            command.CommandText = ReadSql("Transactions/UpdateCategorizationByIds.sql").Replace("/*ID_LIST*/", string.Join(", ", idParameters), StringComparison.Ordinal);
             command.Parameters.Add(SqlParameters.NVarChar("@Category", category, 200));
             command.Parameters.Add(SqlParameters.NVarChar("@SpendingClass", categoryType, 100));
             return await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -229,12 +224,23 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
-            await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = ReadSql("Transactions/DeleteTransaction.sql");
-            command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-        }
+            await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
+            try
+            {
+                await using SqlCommand command = connection.CreateCommand();
+                command.Transaction = transaction;
+                command.CommandText = ReadSql("Transactions/DeleteTransaction.sql");
+                command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", importedTransactionId));
+                await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+                await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(cancellationToken).ConfigureAwait(false);
+                throw;
+            }
+        }
 
         private string ReadSql(string relativePath)
         {
@@ -251,10 +257,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
-            command.CommandText = ReadSql("Transactions/GetDistinctTextValues.sql")
-                .Replace("/*COLUMN_NAME*/", columnName, StringComparison.Ordinal);
-
+            command.CommandText = ReadSql("Transactions/GetDistinctTextValues.sql").Replace("/*COLUMN_NAME*/", columnName, StringComparison.Ordinal);
             List<string> values = new();
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
@@ -269,9 +272,7 @@ namespace PersonalFinanceManager.Data.Repositories
         private static async Task<long> InsertAsync(SqlConnection connection, ImportedTransaction transaction, SqlResourceReader sqlResources, CancellationToken cancellationToken)
         {
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = sqlResources.Read("Transactions/InsertTransaction.sql");
-
             AddSaveParameters(command, transaction);
             object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return Convert.ToInt64(value);
@@ -280,9 +281,7 @@ namespace PersonalFinanceManager.Data.Repositories
         private static async Task UpdateAsync(SqlConnection connection, ImportedTransaction transaction, SqlResourceReader sqlResources, CancellationToken cancellationToken)
         {
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = sqlResources.Read("Transactions/UpdateTransaction.sql");
-
             AddSaveParameters(command, transaction);
             command.Parameters.Add(SqlParameters.BigInt("@ImportedTransactionId", transaction.ImportedTransactionId));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
@@ -304,6 +303,7 @@ namespace PersonalFinanceManager.Data.Repositories
             command.Parameters.Add(SqlParameters.Bit("@IsIncome", transaction.IsIncome));
             command.Parameters.Add(SqlParameters.Bit("@IsTransfer", transaction.IsTransfer));
             command.Parameters.Add(SqlParameters.Bit("@IsManual", transaction.IsManual));
+            command.Parameters.Add(SqlParameters.Bit("@ClassificationIsManual", transaction.ClassificationIsManual));
             command.Parameters.Add(SqlParameters.NVarChar("@IncomeOwner", OwnerValues.Normalize(transaction.IncomeOwner), 50));
             command.Parameters.Add(SqlParameters.NVarChar("@Notes", transaction.Notes, 1000));
             command.Parameters.Add(SqlParameters.NVarChar("@RawRowHash", BuildRowHash(transaction), 64));
@@ -360,6 +360,11 @@ namespace PersonalFinanceManager.Data.Repositories
                 throw new InvalidOperationException("A transaction must be assigned to an account.");
             }
 
+            if (transaction.Amount < -9999999999999999.99m || transaction.Amount > 9999999999999999.99m || decimal.Round(transaction.Amount, 2) != transaction.Amount)
+            {
+                throw new InvalidOperationException("Transaction amounts must fit within 16 whole-number digits and two decimal places.");
+            }
+
             if (transaction.TransactionDate == default)
             {
                 throw new InvalidOperationException("A transaction date is required.");
@@ -392,10 +397,15 @@ namespace PersonalFinanceManager.Data.Repositories
                 AccountNickname = reader.GetStringOrNull("AccountNickname"),
                 ImportBatchId = reader.GetInt64OrNull("ImportBatchId"),
                 TransactionDate = reader.GetDateOnlyOrNull("TransactionDate") ?? DateOnly.MinValue,
+                PostingDate = reader.GetDateOnlyOrNull("PostingDate"),
                 TransactionTime = reader.GetTimeOnlyOrNull("TransactionTime"),
                 Amount = reader.GetDecimalValue("Amount"),
                 Type = reader.GetStringOrEmpty("Type"),
                 Description = reader.GetStringOrEmpty("Description"),
+                ExternalTransactionId = reader.GetStringOrNull("ExternalTransactionId"),
+                FundingSource = reader.GetStringOrNull("FundingSource"),
+                SourceCategory = reader.GetStringOrNull("SourceCategory"),
+                Memo = reader.GetStringOrNull("Memo"),
                 AppliedRuleId = reader.GetInt32OrNull("AppliedRuleId"),
                 Category = reader.GetStringOrNull("Category"),
                 SpendingClass = reader.GetStringOrNull("SpendingClass"),
@@ -403,6 +413,8 @@ namespace PersonalFinanceManager.Data.Repositories
                 IsIncome = reader.GetBooleanValue("IsIncome"),
                 IsTransfer = reader.GetBooleanValue("IsTransfer"),
                 IsManual = reader.GetBooleanValue("IsManual"),
+                ClassificationIsManual = reader.GetBooleanValue("ClassificationIsManual"),
+                LegacyLinkTreatment = reader.GetBooleanValue("LegacyLinkTreatment"),
                 IncomeOwner = reader.GetStringOrNull("IncomeOwner"),
                 Notes = reader.GetStringOrNull("Notes"),
                 CreatedAtUtc = reader.GetDateTimeValue("CreatedAtUtc"),

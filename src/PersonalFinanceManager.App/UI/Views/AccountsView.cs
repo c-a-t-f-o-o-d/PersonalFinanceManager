@@ -48,6 +48,18 @@ namespace PersonalFinanceManager.App.UI.Views
             Button refresh = new() { Text = "Refresh", Width = 100 };
             refresh.Click += async (_, _) => await LoadAccountsAsync().ConfigureAwait(true);
             commands.Controls.Add(refresh);
+            Button reconcile = new() { Text = "Reconcile Statement", Width = 160 };
+
+            reconcile.Click += (_, _) =>
+            {
+                if (_bindingSource.Current is Account account)
+                {
+                    using AccountReconciliationForm form = new(_accountService, account);
+                    form.ShowDialog(this);
+                }
+            };
+
+            commands.Controls.Add(reconcile);
             _grid.Dock = DockStyle.Fill;
             _grid.AutoGenerateColumns = false;
             _grid.AllowUserToAddRows = false;
@@ -70,6 +82,7 @@ namespace PersonalFinanceManager.App.UI.Views
             AddColumn("AccountNumberLastFour", "Last Four", 80);
             AddColumn("CurrentBalance", "Current", 100, "C2");
             AddColumn("AvailableBalance", "Available", 100, "C2");
+            AddColumn("BalanceAsOfDate", "Balance As Of", 110);
             AddColumn("PrincipalBalance", "Principal", 100, "C2");
             AddColumn("CurrentInterestRate", "Rate", 80, "0.00000");
             AddColumn("NextPaymentDueDate", "Next Due", 100);

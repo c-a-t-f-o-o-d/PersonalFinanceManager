@@ -1,4 +1,5 @@
 using PersonalFinanceManager.Core.Models;
+using PersonalFinanceManager.Core.Planning;
 
 namespace PersonalFinanceManager.App.UI.Views;
 
@@ -47,11 +48,11 @@ public sealed class RecurringBillEditForm : Form
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         Controls.Add(root);
-
         _account.DropDownStyle = ComboBoxStyle.DropDownList;
         _account.DisplayMember = nameof(AccountOption.DisplayName);
         _account.ValueMember = nameof(AccountOption.AccountId);
         _account.Items.Add(new AccountOption(null, "No account"));
+
         foreach (Account account in _accounts.OrderBy(account => account.DisplayName))
         {
             _account.Items.Add(new AccountOption(account.AccountId, account.DisplayName));
@@ -61,7 +62,7 @@ public sealed class RecurringBillEditForm : Form
         ConfigureFreeTextCombo(_categoryType, categoryTypes);
         ConfigureFreeTextCombo(_requirementType, requirementTypes);
         _frequency.DropDownStyle = ComboBoxStyle.DropDownList;
-        _frequency.Items.AddRange(new object[] { BillFrequencies.Monthly, BillFrequencies.Weekly, BillFrequencies.Biweekly, BillFrequencies.Quarterly, BillFrequencies.Annual });
+        _frequency.Items.AddRange(new object[] { BillFrequencies.Monthly, BillFrequencies.Weekly, BillFrequencies.Biweekly, BillFrequencies.Quarterly, BillFrequencies.Semiannual, BillFrequencies.Annual });
         ConfigureMoney(_typicalAmount);
         _dueDay.Minimum = 0;
         _dueDay.Maximum = 31;
@@ -79,7 +80,7 @@ public sealed class RecurringBillEditForm : Form
         AddRow(root, ref row, "Category", _category, 34);
         AddRow(root, ref row, "Category Type", _categoryType, 34);
         AddRow(root, ref row, "Need/Want/etc.", _requirementType, 34);
-        AddRow(root, ref row, "Typical amount", _typicalAmount, 34);
+        AddRow(root, ref row, "Amount per occurrence", _typicalAmount, 34);
         AddRow(root, ref row, "Due day", _dueDay, 34);
         AddRow(root, ref row, "Next due date", _nextDueDate, 34);
         AddRow(root, ref row, "Frequency", _frequency, 34);
@@ -181,13 +182,7 @@ public sealed class RecurringBillEditForm : Form
         _dueDay.Value = Bill.DueDay ?? 0;
         _nextDueDate.Checked = Bill.NextDueDate.HasValue;
         _nextDueDate.Value = Bill.NextDueDate?.ToDateTime(TimeOnly.MinValue) ?? DateTime.Today;
-        _frequency.SelectedItem = string.IsNullOrWhiteSpace(Bill.Frequency) ? BillFrequencies.Monthly : Bill.Frequency;
-
-        if (_frequency.SelectedIndex < 0)
-        {
-            _frequency.SelectedIndex = 0;
-        }
-
+        _frequency.SelectedItem = Bill.Frequency;
         _isRequired.Checked = Bill.IsRequired;
         _isActive.Checked = Bill.IsActive;
         _sourceDescription.Text = Bill.SourceDescription ?? string.Empty;
@@ -226,6 +221,11 @@ public sealed class RecurringBillEditForm : Form
             throw new InvalidOperationException("Payee is required.");
         }
 
+        if (_frequency.SelectedIndex < 0)
+        {
+            throw new InvalidOperationException("Choose a bill frequency; the historical cadence could not be established automatically.");
+        }
+
         Bill.BillName = billName;
         Bill.Payee = payee;
         Bill.AccountId = (_account.SelectedItem as AccountOption)?.AccountId;
@@ -235,7 +235,7 @@ public sealed class RecurringBillEditForm : Form
         Bill.TypicalAmount = _typicalAmount.Value;
         Bill.DueDay = _dueDay.Value == 0 ? null : decimal.ToInt32(_dueDay.Value);
         Bill.NextDueDate = _nextDueDate.Checked ? DateOnly.FromDateTime(_nextDueDate.Value.Date) : null;
-        Bill.Frequency = _frequency.SelectedItem?.ToString() ?? BillFrequencies.Monthly;
+        Bill.Frequency = BillSchedule.NormalizeFrequency(_frequency.SelectedItem?.ToString());
         Bill.IsRequired = _isRequired.Checked;
         Bill.IsActive = _isActive.Checked;
         Bill.SourceDescription = EmptyToNull(_sourceDescription.Text);

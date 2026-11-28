@@ -3,6 +3,7 @@ using System.Globalization;
 using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.App.UI.Styling;
 using PersonalFinanceManager.Core.Models;
+using PersonalFinanceManager.Core.Planning;
 using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
@@ -18,6 +19,7 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly Label _monthlyBurnMetric = new();
         private readonly Label _depletionMetric = new();
         private readonly Label _noteLabel = new();
+        private readonly TextBox _assumptions = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
         private readonly RunwayChartControl _chart = new();
         private readonly DataGridView _projectionGrid = new();
         private readonly DataGridView _billGrid = new();
@@ -206,6 +208,9 @@ namespace PersonalFinanceManager.App.UI.Views
             tabs.TabPages.Add(billTab);
             ConfigureBillGrid();
             billTab.Controls.Add(_billGrid);
+            TabPage assumptionsTab = new("Assumptions and missing inputs");
+            assumptionsTab.Controls.Add(_assumptions);
+            tabs.TabPages.Add(assumptionsTab);
         }
 
         private static CardPanel BuildMetricCard(string title, Label valueLabel)
@@ -248,7 +253,7 @@ namespace PersonalFinanceManager.App.UI.Views
         private void ConfigureProjectionGrid()
         {
             ConfigureGrid(_projectionGrid, _projectionSource);
-            _projectionGrid.Columns.Add(MakeTextColumn("PeriodLabel", "Month", 120));
+            _projectionGrid.Columns.Add(MakeTextColumn("PeriodLabel", "Period ending", 120));
             _projectionGrid.Columns.Add(MakeTextColumn("StartingBalance", "Starting", 130, "C2"));
             _projectionGrid.Columns.Add(MakeTextColumn("MoneyIn", "Income", 130, "C2"));
             _projectionGrid.Columns.Add(MakeTextColumn("RequiredExpenses", "Required Bills", 140, "C2"));
@@ -297,160 +302,25 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             IReadOnlyList<Account> accounts = await _runwayService.GetAccountsAsync().ConfigureAwait(true);
             IReadOnlyList<RecurringBill> bills = await _runwayService.GetBillsAsync().ConfigureAwait(true);
-            RunwayAnalysisResult result = BuildRunway(accounts, bills);
-            _availableBalanceMetric.Text = result.StartingAvailableBalance.ToString("C2", CultureInfo.CurrentCulture);
+
+            RunwayAnalysisResult result = new RunwayCalculator().Calculate(
+                accounts,
+                bills,
+                Convert.ToString(_scenario.SelectedItem) ?? "Strict",
+                _monthlyIncome.Value,
+                decimal.ToInt32(_projectionMonths.Value),
+                DateOnly.FromDateTime(DateTime.Today));
+
+            _availableBalanceMetric.Text = result.HasKnownBalance ? result.StartingAvailableBalance.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
             _monthlyBillsMetric.Text = result.MonthlyRequiredExpenses.ToString("C2", CultureInfo.CurrentCulture);
             _monthlyBurnMetric.Text = result.MonthlyNetBurn.ToString("C2", CultureInfo.CurrentCulture);
             _monthlyBurnMetric.ForeColor = result.MonthlyNetBurn > 0M ? Color.FromArgb(220, 38, 38) : UiTheme.Success;
-            _depletionMetric.Text = result.EstimatedDepletionDate.HasValue ? result.EstimatedDepletionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) : "Beyond range";
+            _depletionMetric.Text = !result.HasCompleteInputs ? "Incomplete inputs" : result.EstimatedDepletionDate.HasValue ? result.EstimatedDepletionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) : "Beyond range";
             _projectionSource.DataSource = result.ProjectionPoints;
             _billSource.DataSource = result.IncludedBills;
             _chart.SetData(result.ProjectionPoints);
-            _noteLabel.Text = $"{result.ScenarioName} runway uses {result.IncludedBills.Count} active required bill(s). Estimated months remaining: {result.EstimatedMonthsRemaining:N1}.";
-        }
-
-        private RunwayAnalysisResult BuildRunway(IReadOnlyList<Account> accounts, IReadOnlyList<RecurringBill> bills)
-        {
-            string scenario = Convert.ToString(_scenario.SelectedItem) ?? "Strict";
-            decimal monthlyIncome = _monthlyIncome.Value;
-            int months = decimal.ToInt32(_projectionMonths.Value);
-            decimal startingBalance = accounts.Where(account => account.IsActive && IncludeAccountForScenario(account, scenario)).Sum(GetUsableBalance);
-
-            List<RunwayBillItem> includedBills = bills
-                .Where(bill => bill.IsActive && bill.IsRequired && !IsIgnoredRequirement(bill.RequirementType) && bill.TypicalAmount > 0M)
-                .Select(bill => new RunwayBillItem
-                {
-                    BillName = bill.BillName,
-                    Payee = bill.Payee,
-                    RequirementType = bill.RequirementType,
-                    Frequency = bill.Frequency,
-                    TypicalAmount = bill.TypicalAmount,
-                    MonthlyEquivalent = ToMonthlyAmount(bill)
-                })
-                .Where(item => item.MonthlyEquivalent > 0M)
-                .OrderByDescending(item => item.MonthlyEquivalent)
-                .ToList();
-
-            decimal monthlyBills = includedBills.Sum(item => item.MonthlyEquivalent);
-
-            RunwayAnalysisResult result = new()
-            {
-                ScenarioName = scenario,
-                StartingAvailableBalance = startingBalance,
-                MonthlyIncome = monthlyIncome,
-                MonthlyRequiredExpenses = monthlyBills
-            };
-
-            result.IncludedBills.AddRange(includedBills);
-
-            decimal balance = startingBalance;
-            DateOnly currentMonth = new(DateTime.Today.Year, DateTime.Today.Month, 1);
-
-            for (int index = 0; index < months; index++)
-            {
-                DateOnly period = currentMonth.AddMonths(index);
-                decimal starting = balance;
-                balance = balance + monthlyIncome - monthlyBills;
-
-                result.ProjectionPoints.Add(new RunwayProjectionPoint
-                {
-                    ProjectionDate = period,
-                    StartingBalance = starting,
-                    MoneyIn = monthlyIncome,
-                    RequiredExpenses = monthlyBills,
-                    EndingBalance = balance
-                });
-
-                if (!result.EstimatedDepletionDate.HasValue && balance <= 0M)
-                {
-                    result.EstimatedDepletionDate = period;
-                }
-            }
-
-            result.ProjectedEndingBalance = balance;
-
-            if (result.MonthlyNetBurn > 0M)
-            {
-                result.EstimatedMonthsRemaining = decimal.Round(startingBalance / result.MonthlyNetBurn, 1, MidpointRounding.AwayFromZero);
-            }
-            else
-            {
-                result.EstimatedMonthsRemaining = months;
-            }
-
-            return result;
-        }
-
-        private static bool IncludeAccountForScenario(Account account, string scenario)
-        {
-            string type = account.AccountType ?? string.Empty;
-
-            if (Contains(type, "checking") || Contains(type, "savings") || Contains(type, "cash"))
-            {
-                return true;
-            }
-
-            if (string.Equals(scenario, "Extended", StringComparison.OrdinalIgnoreCase))
-            {
-                return Contains(type, "paypal") || Contains(type, "money market");
-            }
-
-            if (string.Equals(scenario, "Emergency", StringComparison.OrdinalIgnoreCase))
-            {
-                return Contains(type, "paypal") || Contains(type, "investment") || Contains(type, "401") || Contains(type, "ira") || Contains(type, "retirement") || Contains(type, "money market");
-            }
-
-            return false;
-        }
-
-        private static bool Contains(string value, string text)
-        {
-            return value.Contains(text, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static decimal GetUsableBalance(Account account)
-        {
-            decimal? balance = account.CurrentBalance ?? account.AvailableBalance;
-
-            if (!balance.HasValue || balance.Value <= 0M)
-            {
-                return 0M;
-            }
-
-            return balance.Value;
-        }
-
-        private static bool IsIgnoredRequirement(string? requirementType)
-        {
-            return string.Equals(requirementType, BillRequirementTypes.Ignore, StringComparison.OrdinalIgnoreCase) || string.Equals(requirementType, BillRequirementTypes.Transfer, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static decimal ToMonthlyAmount(RecurringBill bill)
-        {
-            string frequency = bill.Frequency ?? BillFrequencies.Monthly;
-            decimal amount = bill.TypicalAmount;
-
-            if (string.Equals(frequency, BillFrequencies.Weekly, StringComparison.OrdinalIgnoreCase))
-            {
-                return decimal.Round(amount * 52M / 12M, 2, MidpointRounding.AwayFromZero);
-            }
-
-            if (string.Equals(frequency, BillFrequencies.Biweekly, StringComparison.OrdinalIgnoreCase))
-            {
-                return decimal.Round(amount * 26M / 12M, 2, MidpointRounding.AwayFromZero);
-            }
-
-            if (string.Equals(frequency, BillFrequencies.Quarterly, StringComparison.OrdinalIgnoreCase))
-            {
-                return decimal.Round(amount / 3M, 2, MidpointRounding.AwayFromZero);
-            }
-
-            if (string.Equals(frequency, BillFrequencies.Annual, StringComparison.OrdinalIgnoreCase))
-            {
-                return decimal.Round(amount / 12M, 2, MidpointRounding.AwayFromZero);
-            }
-
-            return amount;
+            _noteLabel.Text = $"Projection starts {result.AsOfDate:MMM d, yyyy}. {result.IncludedBills.Count} required bill(s). Review the Assumptions and missing inputs tab before relying on this estimate.";
+            _assumptions.Lines = result.Assumptions.ToArray();
         }
 
         private static void AddFilterLabel(FlowLayoutPanel controls, string text)

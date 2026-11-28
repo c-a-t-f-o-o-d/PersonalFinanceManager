@@ -3,6 +3,7 @@ using System.Globalization;
 using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.App.UI.Styling;
 using PersonalFinanceManager.Core.Models;
+using PersonalFinanceManager.Core.Reporting;
 using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
@@ -15,6 +16,7 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly DateTimePicker _toDate = new();
         private readonly NumericUpDown _maxRows = new();
         private readonly Label _periodLabel = new();
+        private readonly TextBox _reviewNotes = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
         private readonly Label _moneyInMetric = new();
         private readonly Label _moneyOutMetric = new();
         private readonly Label _netMetric = new();
@@ -200,7 +202,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
             Label subtitle = new()
             {
-                Text = "Income, spending, and net monthly cash flow for the selected period",
+                Text = "Cash-account receipts and payments; credit-card purchases affect spending when purchased and cash when paid",
                 Dock = DockStyle.Fill,
                 Tag = "SecondaryText"
             };
@@ -223,6 +225,9 @@ namespace PersonalFinanceManager.App.UI.Views
             tabs.TabPages.Add(detailTab);
             ConfigureDetailGrid();
             detailTab.Controls.Add(_detailGrid);
+            TabPage reviewTab = new("Review notes");
+            reviewTab.Controls.Add(_reviewNotes);
+            tabs.TabPages.Add(reviewTab);
         }
 
         private static CardPanel BuildMetricCard(string title, Label valueLabel)
@@ -316,8 +321,8 @@ namespace PersonalFinanceManager.App.UI.Views
         private async Task LoadAccountsAsync()
         {
             _accounts = await _analysisService.GetAccountsAsync().ConfigureAwait(true);
-            List<AccountOption> options = new() { new AccountOption(null, "All Accounts") };
-            options.AddRange(_accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
+            List<AccountOption> options = new() { new AccountOption(null, "All Cash Accounts") };
+            options.AddRange(_accounts.Where(account => AccountClassification.IsCash(account.AccountType)).Select(account => new AccountOption(account.AccountId, account.DisplayName)));
             _accountFilter.DataSource = options;
             _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
             _accountFilter.ValueMember = nameof(AccountOption.AccountId);
@@ -369,9 +374,17 @@ namespace PersonalFinanceManager.App.UI.Views
         private async Task RefreshAsync()
         {
             ExpenseReportFilter filter = BuildFilter();
-            MoneyInOutSummary summary = await _analysisService.GetMoneyInOutSummaryAsync(filter).ConfigureAwait(true);
-            IReadOnlyList<MoneyInOutMonthlyItem> monthly = await _analysisService.GetMoneyInOutMonthlyAsync(filter).ConfigureAwait(true);
-            IReadOnlyList<MoneyInOutDetailItem> details = await _analysisService.GetMoneyInOutDetailsAsync(filter).ConfigureAwait(true);
+
+            if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
+            {
+                MessageBox.Show(this, "The start date must be on or before the end date.", "Cash Flow", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            CashFlowReportResult report = await _analysisService.GetCashFlowReportAsync(filter).ConfigureAwait(true);
+            MoneyInOutSummary summary = report.Summary;
+            IReadOnlyList<MoneyInOutMonthlyItem> monthly = report.Monthly;
+            IReadOnlyList<MoneyInOutDetailItem> details = report.Details;
             _monthlySource.DataSource = monthly;
             _detailSource.DataSource = details;
             _chart.SetData(monthly);
@@ -379,11 +392,21 @@ namespace PersonalFinanceManager.App.UI.Views
             _moneyOutMetric.Text = summary.TotalMoneyOut.ToString("C2", CultureInfo.CurrentCulture);
             _netMetric.Text = summary.NetCashFlow.ToString("C2", CultureInfo.CurrentCulture);
             _netMetric.ForeColor = summary.NetCashFlow >= 0M ? UiTheme.Success : Color.FromArgb(220, 38, 38);
-            int activeMonths = Math.Max(1, monthly.Count);
-            decimal averageNet = summary.NetCashFlow / activeMonths;
-            _averageNetMetric.Text = averageNet.ToString("C2", CultureInfo.CurrentCulture);
+            decimal averageNet = report.Period.MonthEquivalent > 0M ? summary.NetCashFlow / report.Period.MonthEquivalent : 0M;
+            _averageNetMetric.Text = report.Period.HasObservedTransactions ? averageNet.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
             _averageNetMetric.ForeColor = averageNet >= 0M ? UiTheme.Success : Color.FromArgb(220, 38, 38);
-            _periodLabel.Text = BuildPeriodText(summary, monthly.Count, details.Count);
+
+            _periodLabel.Text = report.Period.HasObservedTransactions
+                ? $"{report.Period.FromDate:MMM d, yyyy} - {report.Period.ToDate:MMM d, yyyy} | {report.Period.MonthCount} calendar months | Import coverage unverified"
+                : report.Period.CoverageNote;
+
+            _reviewNotes.Lines = report.Warnings.Append(report.Period.CoverageNote).ToArray();
+            _periodLabel.ForeColor = report.Warnings.Count > 0 ? Color.DarkOrange : UiTheme.TextSecondary;
+
+            if (report.Warnings.Count > 0)
+            {
+                _periodLabel.Text = "Transaction relationships require review; totals include unresolved entries. See Review notes.";
+            }
         }
 
         private ExpenseReportFilter BuildFilter()
@@ -397,15 +420,6 @@ namespace PersonalFinanceManager.App.UI.Views
                 ToDate = _toDate.Checked ? DateOnly.FromDateTime(_toDate.Value.Date) : null,
                 MaxDetailRows = decimal.ToInt32(_maxRows.Value)
             };
-        }
-
-        private static string BuildPeriodText(MoneyInOutSummary summary, int monthCount, int detailCount)
-        {
-            string period = summary.FirstTransactionDate.HasValue && summary.LastTransactionDate.HasValue
-                ? summary.FirstTransactionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) + " - " + summary.LastTransactionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)
-                : "No activity";
-
-            return $"{period}     Months: {monthCount}     Rows: {detailCount}";
         }
 
         private static void AddFilterLabel(FlowLayoutPanel filters, string text)

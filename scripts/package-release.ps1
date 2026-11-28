@@ -105,6 +105,7 @@ Copy-Item .\README.md $stagePath -Force
 Copy-Item .\PRIVACY.md $stagePath -Force
 Copy-Item .\CHANGELOG.md $stagePath -Force
 Copy-Item .\INSTALL.md $stagePath -Force
+Copy-Item .\IMPORTS.md $stagePath -Force
 Copy-Item .\scripts\install-personal-finance-manager.ps1 $stagePath -Force
 Copy-Item .\scripts\uninstall-personal-finance-manager.ps1 $stagePath -Force
 

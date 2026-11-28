@@ -8,8 +8,7 @@ namespace PersonalFinanceManager.Data.Sql
         private readonly Assembly _assembly;
         private readonly ConcurrentDictionary<string, string> _cache = new(StringComparer.OrdinalIgnoreCase);
 
-        public SqlResourceReader()
-            : this(typeof(SqlResourceReader).Assembly)
+        public SqlResourceReader() : this(typeof(SqlResourceReader).Assembly)
         {
         }
 
@@ -30,9 +29,7 @@ namespace PersonalFinanceManager.Data.Sql
 
         private string ReadUncached(string relativePath)
         {
-            string normalized = relativePath
-                .Replace('\\', '.')
-                .Replace('/', '.');
+            string normalized = relativePath.Replace('\\', '.').Replace('/', '.');
 
             string? resourceName = _assembly
                 .GetManifestResourceNames()
@@ -45,6 +42,7 @@ namespace PersonalFinanceManager.Data.Sql
             }
 
             using Stream? stream = _assembly.GetManifestResourceStream(resourceName);
+
             if (stream is null)
             {
                 throw new InvalidOperationException($"SQL resource '{relativePath}' could not be opened.");

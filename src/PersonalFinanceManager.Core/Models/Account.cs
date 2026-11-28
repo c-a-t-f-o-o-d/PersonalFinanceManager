@@ -18,6 +18,7 @@ namespace PersonalFinanceManager.Core.Models
         public decimal? PrincipalBalance { get; set; }
         public decimal? AvailableBalance { get; set; }
         public decimal? CurrentBalance { get; set; }
+        public DateOnly? BalanceAsOfDate { get; set; }
         public decimal? OriginalLoanAmount { get; set; }
         public decimal? CurrentInterestRate { get; set; }
         public decimal? LastPaymentAmount { get; set; }

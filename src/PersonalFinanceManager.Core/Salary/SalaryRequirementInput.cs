@@ -7,6 +7,7 @@ namespace PersonalFinanceManager.Core.Salary
         public decimal PreTaxFederalOnlyMonthly { get; set; }
         public decimal PreTaxFederalAndFicaMonthly { get; set; }
         public decimal PostTaxMonthlyDeductions { get; set; }
+        public SpouseIncomeMode SpouseIncomeMode { get; set; } = SpouseIncomeMode.PostedNet;
         public decimal SpouseAnnualGrossIncome { get; set; }
         public decimal SpouseMonthlyNetIncome { get; set; }
         public bool UseLegacyAllowanceEstimate { get; set; }

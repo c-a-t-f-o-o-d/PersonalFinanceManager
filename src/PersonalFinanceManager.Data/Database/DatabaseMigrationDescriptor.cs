@@ -37,6 +37,7 @@ namespace PersonalFinanceManager.Data.Database
             ArgumentNullException.ThrowIfNull(scriptText);
 
             MatchCollection matches = _schemaVersionRegex.Matches(scriptText);
+
             if (matches.Count == 0)
             {
                 return null;

@@ -9,7 +9,6 @@ namespace PersonalFinanceManager.Tests.Application
         public void ProductIdentity_UsesPublicBaselineName()
         {
             string expectedName = "PersonalFinanceManager";
-
             AssertTextEqual(expectedName, ApplicationIdentity.ProductName, nameof(ApplicationIdentity.ProductName));
             AssertTextEqual(expectedName, ApplicationIdentity.ApplicationName, nameof(ApplicationIdentity.ApplicationName));
             AssertTextEqual(expectedName, ApplicationIdentity.DatabaseName, nameof(ApplicationIdentity.DatabaseName));

@@ -1,7 +1,7 @@
 INSERT INTO dbo.Account
 (
     AccountNickname, Institution, BaseUrl, AccountSummaryUrl, AccountType, AccountOwner, AccountNumberProtected, AccountNumberLastFour,
-    PrincipalBalance, AvailableBalance, CurrentBalance, OriginalLoanAmount, CurrentInterestRate, LastPaymentAmount,
+    PrincipalBalance, AvailableBalance, CurrentBalance, BalanceAsOfDate, OriginalLoanAmount, CurrentInterestRate, LastPaymentAmount,
     NextPaymentAmount, NextPaymentDueDate, NextPaymentInterest, NextPaymentEscrowAmount, LastEscrowAnalysisDate,
     CurrentEscrowAccountBalance, CurrentEscrowPayment, ProjectedEscrowPayment, ProjectedEscrowPaymentDate,
     LastPaymentInterestAmount, LastPaymentEscrow, RegularMonthlyPayment, LatePaymentFee, EscrowDeletionFee,
@@ -12,7 +12,7 @@ OUTPUT INSERTED.AccountId
 VALUES
 (
     @AccountNickname, @Institution, @BaseUrl, @AccountSummaryUrl, @AccountType, @AccountOwner, @AccountNumberProtected, @AccountNumberLastFour,
-    @PrincipalBalance, @AvailableBalance, @CurrentBalance, @OriginalLoanAmount, @CurrentInterestRate, @LastPaymentAmount,
+    @PrincipalBalance, @AvailableBalance, @CurrentBalance, @BalanceAsOfDate, @OriginalLoanAmount, @CurrentInterestRate, @LastPaymentAmount,
     @NextPaymentAmount, @NextPaymentDueDate, @NextPaymentInterest, @NextPaymentEscrowAmount, @LastEscrowAnalysisDate,
     @CurrentEscrowAccountBalance, @CurrentEscrowPayment, @ProjectedEscrowPayment, @ProjectedEscrowPaymentDate,
     @LastPaymentInterestAmount, @LastPaymentEscrow, @RegularMonthlyPayment, @LatePaymentFee, @EscrowDeletionFee,

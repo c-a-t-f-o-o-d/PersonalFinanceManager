@@ -42,12 +42,13 @@ namespace PersonalFinanceManager.App.UI.Views
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 260));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
-
             CardPanel hero = CreateCard();
             root.Controls.Add(hero, 0, 0);
             root.SetColumnSpan(hero, 2);
             hero.Controls.Add(CreateHeaderLabel($"Welcome to {PersonalFinanceManagerIdentity.ProductName}", 18, 18, 520));
-            hero.Controls.Add(CreateBodyLabel($"{PersonalFinanceManagerIdentity.ProductName} needs a SQL Server database connection before account, import, reporting, and backup features are available. The connection string is stored only in your local Windows profile and is protected with DPAPI.", 18, 56, 1040, 44));
+
+            hero.Controls.Add(CreateBodyLabel(
+                $"{PersonalFinanceManagerIdentity.ProductName} needs a SQL Server database connection before account, import, reporting, and backup features are available. The connection string is stored only in your local Windows profile and is protected with DPAPI.", 18, 56, 1040, 44));
 
             Label status = CreateBodyLabel(BuildStatusText(), 18, 98, 1040, 24);
             status.ForeColor = _settings.HasUsableConnectionString() ? UiTheme.Success : Color.FromArgb(220, 38, 38);
@@ -74,6 +75,7 @@ namespace PersonalFinanceManager.App.UI.Views
             CardPanel workflow = CreateCard();
             root.Controls.Add(workflow, 0, 2);
             workflow.Controls.Add(CreateHeaderLabel("Recommended first-run workflow", 18, 18, 360));
+
             workflow.Controls.Add(CreateNumberedText(new[]
             {
                 "Use LocalDB Now for the fastest local setup, or open Settings for network SQL Server.",
@@ -86,14 +88,13 @@ namespace PersonalFinanceManager.App.UI.Views
             Button settings = CreatePrimaryButton("Open Settings", 18, 214, 140);
             settings.Click += (_, _) => _openSettings();
             workflow.Controls.Add(settings);
-
             Button database = CreateSecondaryButton("Open Database", 170, 214, 140);
             database.Click += (_, _) => _openDatabase();
             workflow.Controls.Add(database);
-
             CardPanel privacy = CreateCard();
             root.Controls.Add(privacy, 1, 2);
             privacy.Controls.Add(CreateHeaderLabel("Public repository safety", 18, 18, 360));
+
             privacy.Controls.Add(CreateNumberedText(new[]
             {
                 "Do not commit appsettings.Local.json.",
@@ -110,7 +111,6 @@ namespace PersonalFinanceManager.App.UI.Views
             Button demoButton = CreatePrimaryButton("Load Demo Data", 18, 154, 160);
             demoButton.Click += async (_, _) => await _loadDemoDataAsync().ConfigureAwait(true);
             demo.Controls.Add(demoButton);
-
             CardPanel nextSteps = CreateCard();
             root.Controls.Add(nextSteps, 1, 3);
             nextSteps.Controls.Add(CreateHeaderLabel("Contributor setup notes", 18, 18, 520));

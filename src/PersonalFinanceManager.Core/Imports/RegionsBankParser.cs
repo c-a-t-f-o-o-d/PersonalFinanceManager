@@ -154,6 +154,7 @@ namespace PersonalFinanceManager.Core.Imports
                 SourceCategoryType = categoryType,
                 FundingSource = isTransfer ? account : null,
                 Memo = memo,
+                SourceAccountIdentity = string.IsNullOrWhiteSpace(account) ? null : account,
                 ExternalTransactionId = BuildExternalId(account, transactionDate, postedDate, number, description, debitText, creditText, longDescription)
             };
         }
@@ -174,7 +175,7 @@ namespace PersonalFinanceManager.Core.Imports
 
             string amountText = hasDebit ? debitText : creditText;
 
-            if (!decimal.TryParse(amountText, NumberStyles.AllowLeadingSign | NumberStyles.AllowDecimalPoint | NumberStyles.AllowThousands, CultureInfo.InvariantCulture, out decimal parsedAmount))
+            if (!ImportAmountParser.TryParse(amountText, out decimal parsedAmount))
             {
                 error = $"Invalid amount '{amountText}'.";
                 return false;

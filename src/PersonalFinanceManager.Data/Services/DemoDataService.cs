@@ -41,6 +41,7 @@ namespace PersonalFinanceManager.Data.Services
         public async Task<DemoDataLoadResult> LoadDemoDataAsync(CancellationToken cancellationToken = default)
         {
             DemoDataSummary before = await GetSummaryAsync(cancellationToken).ConfigureAwait(false);
+
             if (before.HasUserData)
             {
                 throw new InvalidOperationException("Demo data can only be loaded into an empty database. Create a new LocalDB database or clear the current database before loading demo data.");
@@ -52,8 +53,8 @@ namespace PersonalFinanceManager.Data.Services
             command.CommandText = _sqlResources.Read("Demo/LoadDemoData.sql");
             command.CommandTimeout = 120;
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
-
             DemoDataSummary after = await GetSummaryAsync(cancellationToken).ConfigureAwait(false);
+
             return new DemoDataLoadResult
             {
                 AccountsCreated = Math.Max(0, after.AccountCount - before.AccountCount),

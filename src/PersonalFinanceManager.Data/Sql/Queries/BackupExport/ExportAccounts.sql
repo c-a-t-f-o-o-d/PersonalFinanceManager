@@ -1,5 +1,5 @@
 SELECT AccountId, AccountNickname, Institution, BaseUrl, AccountSummaryUrl, AccountType,
-       AccountNumberLastFour, PrincipalBalance, AvailableBalance, CurrentBalance, OriginalLoanAmount,
+       AccountNumberLastFour, PrincipalBalance, AvailableBalance, CurrentBalance, BalanceAsOfDate, OriginalLoanAmount,
        CurrentInterestRate, LastPaymentAmount, NextPaymentAmount, NextPaymentDueDate,
        NextPaymentInterest, NextPaymentEscrowAmount, LastEscrowAnalysisDate,
        CurrentEscrowAccountBalance, CurrentEscrowPayment, ProjectedEscrowPayment,

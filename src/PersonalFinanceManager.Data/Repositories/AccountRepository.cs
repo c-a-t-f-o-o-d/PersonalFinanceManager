@@ -25,9 +25,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("Accounts/GetAccounts.sql");
-
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
             while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
@@ -82,9 +80,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
             command.CommandText = _sqlResources.Read("Accounts/InsertAccount.sql");
-
             AddParameters(command, account);
             object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
             return System.Convert.ToInt32(value);
@@ -94,13 +90,14 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
-
+            command.Transaction = transaction;
             command.CommandText = _sqlResources.Read("Accounts/UpdateAccount.sql");
-
             AddParameters(command, account);
             command.Parameters.Add(SqlParameters.Int("@AccountId", account.AccountId));
             await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
         }
 
         private void AddParameters(SqlCommand command, Account account)
@@ -117,6 +114,7 @@ namespace PersonalFinanceManager.Data.Repositories
             command.Parameters.Add(SqlParameters.Decimal("@PrincipalBalance", account.PrincipalBalance));
             command.Parameters.Add(SqlParameters.Decimal("@AvailableBalance", account.AvailableBalance));
             command.Parameters.Add(SqlParameters.Decimal("@CurrentBalance", account.CurrentBalance));
+            command.Parameters.Add(SqlParameters.Date("@BalanceAsOfDate", account.BalanceAsOfDate));
             command.Parameters.Add(SqlParameters.Decimal("@OriginalLoanAmount", account.OriginalLoanAmount));
             command.Parameters.Add(SqlParameters.Decimal("@CurrentInterestRate", account.CurrentInterestRate, 9, 5));
             command.Parameters.Add(SqlParameters.Decimal("@LastPaymentAmount", account.LastPaymentAmount));
@@ -168,6 +166,7 @@ namespace PersonalFinanceManager.Data.Repositories
                 PrincipalBalance = reader.GetDecimalOrNull("PrincipalBalance"),
                 AvailableBalance = reader.GetDecimalOrNull("AvailableBalance"),
                 CurrentBalance = reader.GetDecimalOrNull("CurrentBalance"),
+                BalanceAsOfDate = reader.GetDateOnlyOrNull("BalanceAsOfDate"),
                 OriginalLoanAmount = reader.GetDecimalOrNull("OriginalLoanAmount"),
                 CurrentInterestRate = reader.GetDecimalOrNull("CurrentInterestRate"),
                 LastPaymentAmount = reader.GetDecimalOrNull("LastPaymentAmount"),

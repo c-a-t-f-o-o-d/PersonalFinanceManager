@@ -50,7 +50,7 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4,
+                RowCount = 5,
                 Padding = new Padding(14),
                 BackColor = UiTheme.AppBackground
             };
@@ -59,6 +59,7 @@ namespace PersonalFinanceManager.App.UI.Views
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 66));
             Controls.Add(root);
 
             TableLayoutPanel fields = new()
@@ -76,8 +77,8 @@ namespace PersonalFinanceManager.App.UI.Views
             AddField(fields, "Source Txn ID", _sourceId, 0, 0);
             AddField(fields, "Linked Txn ID", _linkedId, 2, 0);
             AddField(fields, "Link Type", _linkType, 0, 1);
-            _linkType.DropDownStyle = ComboBoxStyle.DropDown;
-            _linkType.Items.AddRange(new object[] { "PayPalFunding", "CreditCardPaymentFunding", "CreditCardPaymentAllocation", "AccountTransfer", "DebtPayment", "ManualReview" });
+            _linkType.DropDownStyle = ComboBoxStyle.DropDownList;
+            _linkType.Items.AddRange(TransactionLinkTypes.All.Cast<object>().ToArray());
             AddField(fields, "Confidence", _confidence, 2, 1);
             _confidence.Minimum = 0;
             _confidence.Maximum = 100;
@@ -88,6 +89,7 @@ namespace PersonalFinanceManager.App.UI.Views
             _allocationAmount.Width = 120;
             fields.Controls.Add(MakeLabel("Notes"), 2, 2);
             _notes.Multiline = true;
+            _notes.MaxLength = 2000;
             _notes.ScrollBars = ScrollBars.Vertical;
             _notes.Dock = DockStyle.Fill;
             fields.Controls.Add(_notes, 3, 2);
@@ -152,6 +154,18 @@ namespace PersonalFinanceManager.App.UI.Views
             Button save = new() { Text = "Save", Width = 100, Tag = "PrimaryButton" };
             save.Click += (_, _) => Save();
             buttons.Controls.Add(save);
+
+            Label guidance = new()
+            {
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                Text = "PurchaseMirror: original wallet purchase → same signed purchase on the funding account. " +
+                    "PurchaseFundingAllocation: wallet purchase → combined bank/card debit; enter the portion funded and repeat for each purchase. " +
+                    "CreditCardPaymentFunding: positive credit/Smart Connect payment → equal negative bank payment; it may settle many purchases. " +
+                    "BankTransfer: equal opposite amounts between owned cash accounts. Dates may differ; verify the statements before saving."
+            };
+
+            root.Controls.Add(guidance, 0, 4);
             UiTheme.ApplyTo(this);
         }
 
@@ -204,7 +218,7 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             _sourceId.Text = LinkModel.SourceTransactionId > 0 ? LinkModel.SourceTransactionId.ToString(CultureInfo.InvariantCulture) : string.Empty;
             _linkedId.Text = LinkModel.LinkedTransactionId > 0 ? LinkModel.LinkedTransactionId.ToString(CultureInfo.InvariantCulture) : string.Empty;
-            _linkType.Text = string.IsNullOrWhiteSpace(LinkModel.LinkType) ? "PayPalFunding" : LinkModel.LinkType;
+            _linkType.Text = string.IsNullOrWhiteSpace(LinkModel.LinkType) ? TransactionLinkTypes.PurchaseMirror : TransactionLinkTypes.Normalize(LinkModel.LinkType);
             _allocationAmount.Value = LinkModel.AllocationAmount.HasValue ? Math.Clamp(LinkModel.AllocationAmount.Value, 0M, _allocationAmount.Maximum) : 0M;
             _confidence.Value = Math.Clamp(LinkModel.ConfidenceScore, 0, 100);
             _notes.Text = LinkModel.Notes ?? string.Empty;

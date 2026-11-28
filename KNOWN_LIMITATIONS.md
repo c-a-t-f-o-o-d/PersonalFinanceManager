@@ -24,14 +24,14 @@ PersonalFinanceManager is usable for local personal-finance analysis, but it is 
 
 ## Imports
 
-- Import formats are built from observed exports and may need updates if a financial institution changes its CSV or statement format.
+- Import profiles target documented standards or specific export layouts. They may need updates if a financial institution changes its format. See [import compatibility](IMPORTS.md) for supported layouts and preparation requirements.
 - PDF parsing is best-effort and intentionally avoids third-party PDF libraries.
 - Imported data should be reviewed through the transaction, duplicate review, transaction links, and data health screens.
 
 ## Calculations
 
 - Salary, tax, runway, and reporting calculations are planning estimates, not tax, legal, or financial advice.
-- Credit-card and PayPal funding links improve reporting accuracy, but unusual payment flows may require manual review.
+- Credit-card and wallet funding links improve reporting accuracy, but unusual payment flows may require manual review.
 - Loan, interest, and amortization estimates may differ from lender-specific calculations.
 
 ## Public demo mode

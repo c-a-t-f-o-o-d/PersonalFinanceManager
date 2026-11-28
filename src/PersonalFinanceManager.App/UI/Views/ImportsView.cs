@@ -49,6 +49,7 @@ namespace PersonalFinanceManager.App.UI.Views
             accountRow.Controls.Add(_accounts);
             accountRow.Controls.Add(new Label { Text = "Profile", Width = 60, TextAlign = System.Drawing.ContentAlignment.MiddleLeft });
             _profiles.Width = 260;
+            _profiles.DropDownWidth = 480;
             _profiles.DropDownStyle = ComboBoxStyle.DropDownList;
             accountRow.Controls.Add(_profiles);
             FlowLayoutPanel fileRow = new() { Dock = DockStyle.Fill };
@@ -59,10 +60,10 @@ namespace PersonalFinanceManager.App.UI.Views
             browse.Click += (_, _) => Browse();
             fileRow.Controls.Add(browse);
             Button preview = new() { Text = "Preview", Width = 100 };
-            preview.Click += async (_, _) => await PreviewAsync().ConfigureAwait(true);
+            preview.Click += async (_, _) => await RunImportActionAsync(PreviewAsync).ConfigureAwait(true);
             fileRow.Controls.Add(preview);
             Button import = new() { Text = "Import", Width = 100 };
-            import.Click += async (_, _) => await ImportAsync().ConfigureAwait(true);
+            import.Click += async (_, _) => await RunImportActionAsync(ImportAsync).ConfigureAwait(true);
             fileRow.Controls.Add(import);
             Button repairDataFlow = new() { Text = "Repair Data Links", Width = 135 };
             repairDataFlow.Click += async (_, _) => await RepairDataFlowAsync().ConfigureAwait(true);
@@ -142,6 +143,20 @@ namespace PersonalFinanceManager.App.UI.Views
             }
         }
 
+        private async Task RunImportActionAsync(Func<Task> action)
+        {
+            try
+            {
+                await action().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _bindingSource.DataSource = Array.Empty<ImportedTransaction>();
+                _summary.Text = ex.Message;
+                MessageBox.Show(this, ex.Message, "Import could not be completed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
         private async Task PreviewAsync()
         {
             if (!ValidateInputs(out int accountId, out string profileCode, out string path))
@@ -152,11 +167,7 @@ namespace PersonalFinanceManager.App.UI.Views
             ImportSummary summary = await _importWorkflowService.PreviewAsync(accountId, profileCode, path).ConfigureAwait(true);
             _bindingSource.DataSource = summary.PreviewRows;
             _summary.Text = $"Profile: {profileCode}. Preview rows: {summary.ParsedRows}. Parse errors: {summary.ErrorRows}.";
-
-            if (summary.ParseErrors.Count > 0)
-            {
-                _summary.AppendText(Environment.NewLine + string.Join(Environment.NewLine, summary.ParseErrors.Select(error => $"Row {error.RowNumber}: {error.Message}")));
-            }
+            AppendParseMessages(summary);
         }
 
         private async Task ImportAsync()
@@ -176,17 +187,13 @@ namespace PersonalFinanceManager.App.UI.Views
                 $"Exact duplicates skipped: {summary.ExactDuplicateRows}{Environment.NewLine}" +
                 $"Duplicates needing review: {summary.DuplicateReviewRows}{Environment.NewLine}" +
                 $"Errors: {summary.ErrorRows}{Environment.NewLine}" +
-                $"New PayPal funding links: {summary.LinkedFundingRows}{Environment.NewLine}" +
-                $"Linked PayPal rows normalized: {summary.NormalizedLinkedFundingRows}{Environment.NewLine}" +
-                $"Likely PayPal funding rows normalized: {summary.NormalizedLikelyPayPalFundingRows}{Environment.NewLine}" +
-                $"Credit card funding links: {summary.CreditCardFundingLinks}{Environment.NewLine}" +
-                $"Credit card payment allocations: {summary.CreditCardPaymentAllocations}{Environment.NewLine}" +
-                $"Linked credit card payment rows normalized: {summary.NormalizedCreditCardPaymentRows}{Environment.NewLine}" +
-                $"Likely credit card payment rows normalized: {summary.NormalizedLikelyCreditCardPaymentRows}{Environment.NewLine}" +
-                $"Bank transfer links: {summary.BankTransferLinks}{Environment.NewLine}" +
-                $"Linked bank transfer rows normalized: {summary.NormalizedBankTransferRows}{Environment.NewLine}" +
-                $"Same file hash seen before: {summary.FileHashPreviouslyImported}";
+                $"New purchase mirrors: {summary.LinkedFundingRows}{Environment.NewLine}" +
+                $"Debt/card payment funding links: {summary.CreditCardFundingLinks}{Environment.NewLine}" +
+                $"Internal transfer links: {summary.BankTransferLinks}{Environment.NewLine}" +
+                $"Same file previously imported to this account: {summary.FileHashPreviouslyImported}{Environment.NewLine}" +
+                "Use Transaction Links to reconcile combined wallet funding or statements without matching account references.";
 
+            AppendParseMessages(summary);
             _bindingSource.DataSource = Array.Empty<ImportedTransaction>();
         }
 
@@ -196,22 +203,28 @@ namespace PersonalFinanceManager.App.UI.Views
             {
                 DataFlowRepairSummary summary = await _importWorkflowService.RepairDataFlowAsync().ConfigureAwait(true);
 
-                _summary.Text = $"Data-flow repair completed.{Environment.NewLine}" +
-                    $"New PayPal funding links: {summary.LinkedFundingRows}{Environment.NewLine}" +
-                    $"Linked PayPal rows normalized: {summary.NormalizedLinkedFundingRows}{Environment.NewLine}" +
-                    $"Likely PayPal funding rows normalized: {summary.NormalizedLikelyPayPalFundingRows}{Environment.NewLine}" +
-                    $"Credit card funding links: {summary.CreditCardFundingLinks}{Environment.NewLine}" +
-                    $"Credit card payment allocations: {summary.CreditCardPaymentAllocations}{Environment.NewLine}" +
-                    $"Linked credit card payment rows normalized: {summary.NormalizedCreditCardPaymentRows}{Environment.NewLine}" +
-                    $"Likely credit card payment rows normalized: {summary.NormalizedLikelyCreditCardPaymentRows}{Environment.NewLine}" +
-                    $"Bank transfer links: {summary.BankTransferLinks}{Environment.NewLine}" +
-                    $"Linked bank transfer rows normalized: {summary.NormalizedBankTransferRows}{Environment.NewLine}" +
-                    $"Potential exact duplicate groups already in the database: {summary.PotentialDuplicateGroups}{Environment.NewLine}" +
-                    "Refresh Expense Analysis after this completes.";
+                _summary.Text = $"Reconciliation completed.{Environment.NewLine}" +
+                    $"Purchase mirrors: {summary.LinkedFundingRows}{Environment.NewLine}" +
+                    $"Debt/card payment funding links: {summary.CreditCardFundingLinks}{Environment.NewLine}" +
+                    $"Internal transfers: {summary.BankTransferLinks}{Environment.NewLine}" +
+                    "Only unambiguous account-reference matches were linked. Combined funding and uncertain matches require review in Transaction Links.";
             }
             catch (Exception ex)
             {
                 MessageBox.Show(this, ex.Message, "Data-flow repair failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+        }
+
+        private void AppendParseMessages(ImportSummary summary)
+        {
+            foreach (var error in summary.ParseErrors)
+            {
+                _summary.AppendText($"{Environment.NewLine}Error, row {error.RowNumber}: {error.Message}");
+            }
+
+            foreach (var warning in summary.ParseWarnings)
+            {
+                _summary.AppendText($"{Environment.NewLine}Review, row {warning.RowNumber}: {warning.Message}");
             }
         }
 

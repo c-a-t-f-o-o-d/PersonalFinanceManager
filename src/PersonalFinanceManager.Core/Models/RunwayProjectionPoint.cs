@@ -7,6 +7,6 @@ namespace PersonalFinanceManager.Core.Models
         public decimal MoneyIn { get; set; }
         public decimal RequiredExpenses { get; set; }
         public decimal EndingBalance { get; set; }
-        public string PeriodLabel => ProjectionDate.ToString("yyyy-MM");
+        public string PeriodLabel => ProjectionDate.ToString("yyyy-MM-dd");
     }
 }

@@ -11,5 +11,9 @@ namespace PersonalFinanceManager.Application.Services.Contracts
         Task<int> SaveAccountAsync(Account account, CancellationToken cancellationToken = default);
 
         Task DeleteAccountAsync(int accountId, CancellationToken cancellationToken = default);
+
+        Task<AccountReconciliation> CheckStatementAsync(AccountReconciliationRequest request, bool record, CancellationToken cancellationToken = default);
+
+        Task<IReadOnlyList<AccountReconciliation>> GetStatementHistoryAsync(int accountId, CancellationToken cancellationToken = default);
     }
 }

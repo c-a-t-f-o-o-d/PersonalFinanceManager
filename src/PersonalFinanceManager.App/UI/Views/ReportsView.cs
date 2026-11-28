@@ -4,6 +4,7 @@ using System.Text;
 using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.App.UI.Styling;
 using PersonalFinanceManager.Core.Models;
+using PersonalFinanceManager.Core.Reporting;
 using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
@@ -20,6 +21,7 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly MonthlyExpenseChartControl _monthlyChart = new();
         private readonly PieExpenseChartControl _pieChart = new();
         private readonly Label _periodLabel = new();
+        private readonly TextBox _reviewNotes = new() { Dock = DockStyle.Fill, Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical };
         private readonly BindingSource _summarySource = new();
         private readonly DateTimePicker _toDate = new();
         private readonly DataGridView _detailGrid = new();
@@ -91,7 +93,7 @@ namespace PersonalFinanceManager.App.UI.Views
             }
 
             root.Controls.Add(metricRow, 0, 1);
-            metricRow.Controls.Add(BuildMetricCard("Total Expenses", _totalExpensesMetric), 0, 0);
+            metricRow.Controls.Add(BuildMetricCard("Net Expenses", _totalExpensesMetric), 0, 0);
             metricRow.Controls.Add(BuildMetricCard("Avg / Month", _averageMonthMetric), 1, 0);
             metricRow.Controls.Add(BuildMetricCard("Avg / Day", _dailyAverageMetric), 2, 0);
             metricRow.Controls.Add(BuildMetricCard("Avg / Txn", _averageTransactionMetric), 3, 0);
@@ -335,6 +337,9 @@ namespace PersonalFinanceManager.App.UI.Views
             tabs.TabPages.Add(detailTab);
             ConfigureDetailGrid();
             detailTab.Controls.Add(_detailGrid);
+            TabPage reviewTab = new("Review notes");
+            reviewTab.Controls.Add(_reviewNotes);
+            tabs.TabPages.Add(reviewTab);
         }
 
         private void ConfigureSummaryGrid()
@@ -450,15 +455,27 @@ namespace PersonalFinanceManager.App.UI.Views
         private async Task RefreshReportsAsync()
         {
             ExpenseReportFilter filter = BuildFilter();
-            ExpenseMetricSummary metrics = await _analysisService.GetExpenseMetricSummaryAsync(filter).ConfigureAwait(true);
-            IReadOnlyList<ExpenseSummaryItem> summary = await _analysisService.GetExpenseSummaryAsync(filter).ConfigureAwait(true);
-            IReadOnlyList<MonthlyExpenseTotalItem> monthly = await _analysisService.GetMonthlyExpenseTotalsAsync(filter).ConfigureAwait(true);
-            IReadOnlyList<ExpenseDetailItem> details = await _analysisService.GetExpenseDetailsAsync(filter).ConfigureAwait(true);
+
+            if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
+            {
+                MessageBox.Show(this, "The start date must be on or before the end date.", "Expense Analysis", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            ExpenseReportResult report = await _analysisService.GetExpenseReportAsync(filter).ConfigureAwait(true);
+            ExpenseMetricSummary metrics = report.Metrics;
+            IReadOnlyList<ExpenseSummaryItem> summary = report.Summary;
+            IReadOnlyList<MonthlyExpenseTotalItem> monthly = report.Monthly;
+            IReadOnlyList<ExpenseDetailItem> details = report.Details;
             _currentDetailRows = details;
             _summarySource.DataSource = summary;
             _monthlySource.DataSource = monthly;
             _detailSource.DataSource = details;
-            UpdateMetrics(metrics, summary, monthly);
+            UpdateMetrics(metrics, summary, monthly, report.Period);
+            _reviewNotes.Lines = report.Warnings.Append(report.Period.CoverageNote).ToArray();
+            _periodLabel.ForeColor = report.Warnings.Count > 0 ? Color.DarkOrange : UiTheme.TextSecondary;
+            if (report.Warnings.Count > 0)
+                _periodLabel.Text = "Transaction relationships require review; totals include unresolved entries. See Review notes.";
             _pieChart.SetData(summary);
             _monthlyChart.SetData(monthly);
         }
@@ -477,31 +494,25 @@ namespace PersonalFinanceManager.App.UI.Views
             };
         }
 
-        private void UpdateMetrics(ExpenseMetricSummary metrics, IReadOnlyList<ExpenseSummaryItem> summary, IReadOnlyList<MonthlyExpenseTotalItem> monthly)
+        private void UpdateMetrics(ExpenseMetricSummary metrics, IReadOnlyList<ExpenseSummaryItem> summary, IReadOnlyList<MonthlyExpenseTotalItem> monthly, ReportPeriod period)
         {
             decimal total = metrics.TotalExpenses;
-            int activeMonths = Math.Max(1, monthly.Count);
-            int days = 1;
-
-            if (metrics.FirstTransactionDate.HasValue && metrics.LastTransactionDate.HasValue)
-            {
-                days = Math.Max(1, metrics.LastTransactionDate.Value.DayNumber - metrics.FirstTransactionDate.Value.DayNumber + 1);
-            }
-
+            decimal months = period.MonthEquivalent;
+            int days = period.DayCount;
             ExpenseSummaryItem? topCategory = summary.OrderByDescending(item => item.TotalAmount).FirstOrDefault();
             MonthlyExpenseTotalItem? topMonth = monthly.OrderByDescending(item => item.TotalAmount).FirstOrDefault();
-            _totalExpensesMetric.Text = total.ToString("C2", CultureInfo.CurrentCulture);
-            _averageMonthMetric.Text = (total / activeMonths).ToString("C2", CultureInfo.CurrentCulture);
-            _dailyAverageMetric.Text = (total / days).ToString("C2", CultureInfo.CurrentCulture);
+            _totalExpensesMetric.Text = period.HasObservedTransactions ? total.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
+            _averageMonthMetric.Text = period.HasObservedTransactions && months > 0M ? (total / months).ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
+            _dailyAverageMetric.Text = period.HasObservedTransactions && days > 0 ? (total / days).ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
             _averageTransactionMetric.Text = metrics.TransactionCount == 0 ? "$0.00" : (total / metrics.TransactionCount).ToString("C2", CultureInfo.CurrentCulture);
             _largestCategoryMetric.Text = topCategory is null ? "None" : $"{topCategory.GroupName} {topCategory.TotalAmount:C0}";
             _largestMonthMetric.Text = topMonth is null ? "None" : $"{topMonth.MonthLabel} {topMonth.TotalAmount:C0}";
 
-            string rangeText = metrics.FirstTransactionDate.HasValue && metrics.LastTransactionDate.HasValue
-                ? metrics.FirstTransactionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) + " - " + metrics.LastTransactionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)
+            string rangeText = period.FromDate.HasValue && period.ToDate.HasValue
+                ? period.FromDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) + " - " + period.ToDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture)
                 : "No expense rows in selected period";
 
-            _periodLabel.Text = $"{rangeText}     Total: {total:C2}     Groups: {summary.Count}     Rows: {metrics.TransactionCount}";
+            _periodLabel.Text = $"{rangeText}     Total: {total:C2}     Groups: {summary.Count}     Rows: {metrics.TransactionCount}     Import coverage unverified";
         }
 
         private void ExportDetailsCsv()
@@ -607,7 +618,6 @@ namespace PersonalFinanceManager.App.UI.Views
                 int pieDiameter = Math.Min(Math.Max(300, Height - 10), availablePieWidth);
                 pieDiameter = Math.Max(280, pieDiameter);
                 Rectangle pieBounds = new(10, Math.Max(4, (Height - pieDiameter) / 2), pieDiameter, pieDiameter);
-
                 List<SliceLabel> labels = new();
                 float start = -90F;
                 using Pen separator = new(Color.White, 2F);
@@ -630,7 +640,19 @@ namespace PersonalFinanceManager.App.UI.Views
 
             private static IReadOnlyList<ExpenseSummaryItem> BuildDisplayItems(IReadOnlyList<ExpenseSummaryItem> sourceItems)
             {
-                List<ExpenseSummaryItem> orderedItems = sourceItems.Where(item => item.TotalAmount > 0M).OrderByDescending(item => item.TotalAmount).ToList();
+                decimal positiveTotal = sourceItems.Where(item => item.TotalAmount > 0M).Sum(item => item.TotalAmount);
+
+                List<ExpenseSummaryItem> orderedItems = sourceItems
+                    .Where(item => item.TotalAmount > 0M)
+                    .OrderByDescending(item => item.TotalAmount)
+                    .Select(item => new ExpenseSummaryItem
+                    {
+                        GroupName = item.GroupName,
+                        TotalAmount = item.TotalAmount,
+                        TransactionCount = item.TransactionCount,
+                        PercentOfTotal = positiveTotal > 0M ? decimal.Round(item.TotalAmount / positiveTotal * 100M, 2, MidpointRounding.AwayFromZero) : 0M
+                    })
+                    .ToList();
 
                 if (orderedItems.Count <= _maxLegendSlices)
                 {
@@ -685,7 +707,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 {
                     decimal total = _items.Sum(item => item.TotalAmount);
                     using Font totalFont = new("Segoe UI Semibold", 9F, FontStyle.Regular);
-                    graphics.DrawString("Total Expenses: " + total.ToString("C2", CultureInfo.CurrentCulture), totalFont, primaryBrush, bounds.Left, Math.Max(y + 8, bounds.Bottom - 24));
+                    graphics.DrawString("Positive category balances: " + total.ToString("C2", CultureInfo.CurrentCulture), totalFont, primaryBrush, bounds.Left, Math.Max(y + 8, bounds.Bottom - 24));
                 }
             }
 
@@ -798,19 +820,20 @@ namespace PersonalFinanceManager.App.UI.Views
                 e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
                 e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
 
-                if (_items.Count == 0 || _items.Max(item => item.TotalAmount) <= 0M)
+                if (_items.Count == 0 || _items.All(item => item.TotalAmount == 0M))
                 {
                     DrawEmpty(e.Graphics, ClientRectangle);
                     return;
                 }
 
                 Rectangle plot = new(74, 12, Math.Max(60, Width - 94), Math.Max(80, Height - 64));
-                decimal max = RoundAxisMaximum(_items.Max(item => item.TotalAmount));
-                DrawChartGrid(e.Graphics, plot, max);
-                DrawBars(e.Graphics, plot, max);
+                decimal max = Math.Max(1M, RoundAxisMaximum(_items.Max(item => item.TotalAmount)));
+                decimal min = Math.Min(0M, _items.Min(item => item.TotalAmount));
+                DrawChartGrid(e.Graphics, plot, min, max);
+                DrawBars(e.Graphics, plot, min, max);
             }
 
-            private void DrawBars(Graphics graphics, Rectangle plot, decimal max)
+            private void DrawBars(Graphics graphics, Rectangle plot, decimal min, decimal max)
             {
                 int gap = _items.Count > 18 ? 6 : 12;
                 int barWidth = Math.Max(8, Math.Min(46, (plot.Width - gap * (_items.Count + 1)) / Math.Max(1, _items.Count)));
@@ -821,9 +844,10 @@ namespace PersonalFinanceManager.App.UI.Views
                 for (int index = 0; index < _items.Count; index++)
                 {
                     MonthlyExpenseTotalItem item = _items[index];
-                    int barHeight = (int)Math.Round((double)(item.TotalAmount / max) * (plot.Height - 4), MidpointRounding.AwayFromZero);
+                    int zeroY = plot.Bottom - (int)Math.Round((double)(-min / (max - min)) * plot.Height, MidpointRounding.AwayFromZero);
+                    int valueY = plot.Bottom - (int)Math.Round((double)((item.TotalAmount - min) / (max - min)) * plot.Height, MidpointRounding.AwayFromZero);
                     int x = startX + index * (barWidth + gap);
-                    Rectangle bar = new(x, plot.Bottom - barHeight, barWidth, Math.Max(1, barHeight));
+                    Rectangle bar = new(x, Math.Min(zeroY, valueY), barWidth, Math.Max(1, Math.Abs(zeroY - valueY)));
                     Color baseColor = PieExpenseChartControl._palette[index % PieExpenseChartControl._palette.Length];
                     using LinearGradientBrush brush = new(bar, Lighten(baseColor, 0.14F), baseColor, LinearGradientMode.Vertical);
                     graphics.FillRectangle(brush, bar);
@@ -836,7 +860,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 }
             }
 
-            private static void DrawChartGrid(Graphics graphics, Rectangle plot, decimal max)
+            private static void DrawChartGrid(Graphics graphics, Rectangle plot, decimal min, decimal max)
             {
                 using Pen axisPen = new(Color.FromArgb(194, 203, 217));
                 using Pen gridPen = new(Color.FromArgb(229, 234, 242)) { DashStyle = DashStyle.Dash };
@@ -846,7 +870,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
                 for (int step = 0; step <= 5; step++)
                 {
-                    decimal value = max / 5M * step;
+                    decimal value = min + (max - min) / 5M * step;
                     int y = plot.Bottom - (int)Math.Round(plot.Height * step / 5D, MidpointRounding.AwayFromZero);
                     graphics.DrawLine(step == 0 ? axisPen : gridPen, plot.Left, y, plot.Right, y);
                     Rectangle labelBounds = new(0, y - 10, plot.Left - 8, 20);

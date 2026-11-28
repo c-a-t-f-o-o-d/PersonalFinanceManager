@@ -1,9 +1,14 @@
 using PersonalFinanceManager.Core.Models;
+using PersonalFinanceManager.Core.Reporting;
 
 namespace PersonalFinanceManager.Application.Services.Contracts
 {
     public interface IAnalysisService
     {
+        Task<ExpenseReportResult> GetExpenseReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default);
+
+        Task<CashFlowReportResult> GetCashFlowReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default);
+
         Task<IReadOnlyList<Account>> GetAccountsAsync(CancellationToken cancellationToken = default);
 
         Task<ExpenseMetricSummary> GetExpenseMetricSummaryAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default);
