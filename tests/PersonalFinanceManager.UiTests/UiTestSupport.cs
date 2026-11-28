@@ -27,25 +27,55 @@ namespace PersonalFinanceManager.UiTests
             Exception? failure = null;
             Thread thread = new(() =>
             {
+                bool checkCrossThreadCalls = Control.CheckForIllegalCrossThreadCalls;
+                ThreadExceptionEventHandler captureException = (_, args) => failure ??= args.Exception;
+
                 try
                 {
+                    Control.CheckForIllegalCrossThreadCalls = true;
                     WinFormsApplication.EnableVisualStyles();
-                    action();
+                    WinFormsApplication.ThreadException += captureException;
+                    using ApplicationContext context = new();
+                    using Control dispatcher = new();
+                    _ = dispatcher.Handle;
+
+                    dispatcher.BeginInvoke((Action)(() =>
+                    {
+                        try
+                        {
+                            Assert.IsTrue(WinFormsApplication.MessageLoop, "UI tests require a running application message loop.");
+                            Assert.IsInstanceOfType<WindowsFormsSynchronizationContext>(SynchronizationContext.Current);
+                            action();
+                        }
+                        catch (Exception ex)
+                        {
+                            failure ??= ex;
+                        }
+                        finally
+                        {
+                            try
+                            {
+                                UiTheme.SetDarkMode(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                failure ??= ex;
+                            }
+
+                            context.ExitThread();
+                        }
+                    }));
+
+                    WinFormsApplication.Run(context);
                 }
                 catch (Exception ex)
                 {
-                    failure = ex;
+                    failure ??= ex;
                 }
                 finally
                 {
-                    try
-                    {
-                        UiTheme.SetDarkMode(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        failure ??= ex;
-                    }
+                    WinFormsApplication.ThreadException -= captureException;
+                    Control.CheckForIllegalCrossThreadCalls = checkCrossThreadCalls;
                 }
             }) { IsBackground = true };
             thread.SetApartmentState(ApartmentState.STA);
