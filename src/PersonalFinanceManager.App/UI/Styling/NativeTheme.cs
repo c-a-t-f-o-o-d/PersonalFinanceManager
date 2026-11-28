@@ -64,7 +64,8 @@ namespace PersonalFinanceManager.App.UI.Styling
                 return;
             }
 
-            IntPtr calendar = SendMessage(picker.Handle, _getMonthCalendar, IntPtr.Zero, IntPtr.Zero);
+            IntPtr pickerHandle = picker.Handle;
+            IntPtr calendar = SendMessage(pickerHandle, _getMonthCalendar, IntPtr.Zero, IntPtr.Zero);
 
             if (calendar != IntPtr.Zero)
             {
@@ -80,6 +81,19 @@ namespace PersonalFinanceManager.App.UI.Styling
                 SetCalendarColor(calendar, 4, UiTheme.InputBackground);
                 SetCalendarColor(calendar, 5, UiTheme.TextMuted);
                 FitCalendar(picker, calendar);
+
+                // The date picker applies its initial popup bounds after the DropDown notification returns.
+                if (!picker.IsDisposed && !picker.Disposing && picker.IsHandleCreated && picker.Handle == pickerHandle)
+                {
+                    _ = picker.BeginInvoke((Action)(() =>
+                    {
+                        if (!picker.IsDisposed && !picker.Disposing && picker.IsHandleCreated && picker.Handle == pickerHandle
+                            && SendMessage(pickerHandle, _getMonthCalendar, IntPtr.Zero, IntPtr.Zero) == calendar)
+                        {
+                            FitCalendar(picker, calendar);
+                        }
+                    }));
+                }
             }
         }
 

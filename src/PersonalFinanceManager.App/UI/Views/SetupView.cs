@@ -129,8 +129,8 @@ namespace PersonalFinanceManager.App.UI.Views
             demo.Controls.Add(CreateActions(demoButton));
             CardPanel nextSteps = CreateCard();
             AddCard(nextSteps);
-            nextSteps.Controls.Add(CreateHeaderLabel("Contributor setup notes"));
-            nextSteps.Controls.Add(CreateBodyLabel("This project currently targets SQL Server because the application was originally built for local/self-hosted use. A future public release should add a simpler non-technical installation option, improve sample/demo data, and then perform a final README rewrite after the architecture cleanup is complete."));
+            nextSteps.Controls.Add(CreateHeaderLabel("After connecting"));
+            nextSteps.Controls.Add(CreateBodyLabel("Create an account for each bank, card, or wallet you import. Review the starter categories and inactive rule examples before importing statements. Use Duplicate Review and Transaction Links to resolve repeated transactions and movements between your accounts."));
             PerformLayout();
         }
 
