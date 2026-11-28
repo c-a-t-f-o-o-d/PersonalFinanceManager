@@ -87,7 +87,7 @@ namespace PersonalFinanceManager.App.UI.Controls
             Arrange();
         }
 
-        public static void ScrollableChart(TabPage page, Control content, int minimumHeight)
+        public static void ScrollableChart(TabPage page, Control content, Func<int> minimumHeight)
         {
             bool arranging = false;
             page.AutoScroll = true;
@@ -107,9 +107,14 @@ namespace PersonalFinanceManager.App.UI.Controls
 
                 try
                 {
-                    int height = content.LogicalToDeviceUnits(minimumHeight);
-                    page.AutoScrollMinSize = new Size(0, height);
-                    content.Bounds = new Rectangle(page.AutoScrollPosition, new Size(Math.Max(0, page.ClientSize.Width), Math.Max(height, page.ClientSize.Height)));
+                    for (int pass = 0; pass < 2; pass++)
+                    {
+                        content.Width = Math.Max(0, page.ClientSize.Width);
+                        int height = minimumHeight();
+                        page.AutoScrollMinSize = new Size(0, height);
+                        content.Height = Math.Max(height, page.ClientSize.Height);
+                        content.Location = page.AutoScrollPosition;
+                    }
                 }
                 finally
                 {
@@ -118,6 +123,7 @@ namespace PersonalFinanceManager.App.UI.Controls
             }
 
             page.Layout += (_, _) => Arrange();
+            content.Layout += (_, _) => Arrange();
             page.DpiChangedAfterParent += (_, _) => Arrange();
             Arrange();
         }

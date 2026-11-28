@@ -59,12 +59,11 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 3,
+                RowCount = 2,
                 BackColor = UiTheme.AppBackground
             };
 
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 118));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
 
@@ -77,6 +76,18 @@ namespace PersonalFinanceManager.App.UI.Views
 
             root.Controls.Add(filterCard, 0, 0);
             BuildFilterCard(filterCard);
+
+            TableLayoutPanel overview = new()
+            {
+                ColumnCount = 1,
+                RowCount = 2,
+                BackColor = UiTheme.AppBackground,
+                Margin = Padding.Empty
+            };
+
+            overview.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            overview.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
+            overview.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
             TableLayoutPanel metricRow = new()
             {
@@ -91,14 +102,14 @@ namespace PersonalFinanceManager.App.UI.Views
                 metricRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / 6F));
             }
 
-            root.Controls.Add(metricRow, 0, 1);
+            overview.Controls.Add(metricRow, 0, 0);
             metricRow.Controls.Add(BuildMetricCard("Net Expenses", _totalExpensesMetric), 0, 0);
             metricRow.Controls.Add(BuildMetricCard("Avg / Month", _averageMonthMetric), 1, 0);
             metricRow.Controls.Add(BuildMetricCard("Avg / Day", _dailyAverageMetric), 2, 0);
             metricRow.Controls.Add(BuildMetricCard("Avg / Txn", _averageTransactionMetric), 3, 0);
             metricRow.Controls.Add(BuildMetricCard("Top Category", _largestCategoryMetric), 4, 0);
             metricRow.Controls.Add(BuildMetricCard("Top Month", _largestMonthMetric), 5, 0);
-            PageLayout.ResponsiveMetrics(root, 1, metricRow, 3, 1200);
+            PageLayout.ResponsiveMetrics(overview, 0, metricRow, 3, 1200);
 
             TableLayoutPanel chartRow = new()
             {
@@ -115,6 +126,8 @@ namespace PersonalFinanceManager.App.UI.Views
             CardPanel monthlyCard = BuildChartCard("Monthly Expense Totals", "Spending trend by calendar month", _monthlyChart);
             chartRow.Controls.Add(monthlyCard, 1, 0);
 
+            overview.Controls.Add(chartRow, 0, 1);
+
             CardPanel gridCard = new()
             {
                 Dock = DockStyle.Fill,
@@ -122,8 +135,8 @@ namespace PersonalFinanceManager.App.UI.Views
                 Margin = new Padding(0)
             };
 
-            root.Controls.Add(gridCard, 0, 2);
-            BuildGridTabs(gridCard, chartRow);
+            root.Controls.Add(gridCard, 0, 1);
+            BuildGridTabs(gridCard, overview);
             PageLayout.AutoSizeHeaders(root, 0);
             UiTheme.ApplyTo(this);
         }
@@ -317,7 +330,7 @@ namespace PersonalFinanceManager.App.UI.Views
             return card;
         }
 
-        private void BuildGridTabs(Control parent, Control overview)
+        private void BuildGridTabs(Control parent, TableLayoutPanel overview)
         {
             TabControl tabs = new()
             {
@@ -325,8 +338,8 @@ namespace PersonalFinanceManager.App.UI.Views
             };
 
             parent.Controls.Add(tabs);
-            TabPage overviewTab = new("Charts");
-            PageLayout.ScrollableChart(overviewTab, overview, 360);
+            TabPage overviewTab = new("Overview");
+            PageLayout.ScrollableChart(overviewTab, overview, () => (int)overview.RowStyles[0].Height + overview.LogicalToDeviceUnits(360));
             tabs.TabPages.Add(overviewTab);
 
             TabPage summaryTab = new("Expense Summary");

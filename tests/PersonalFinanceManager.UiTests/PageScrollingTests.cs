@@ -97,22 +97,29 @@ namespace PersonalFinanceManager.UiTests
                     host.ClientSize = size;
                     WinFormsApplication.DoEvents();
 
-                    foreach (Label value in Descendants(report).OfType<Label>().Where(label => label.AutoEllipsis && label.Font.Size >= 12F &&
-                        decimal.TryParse(label.Text, NumberStyles.Currency, CultureInfo.CurrentCulture, out _)))
-                    {
-                        int requiredWidth = TextRenderer.MeasureText(value.Text, value.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix).Width;
-                        Assert.IsTrue(value.ClientSize.Width >= requiredWidth, $"Report metric '{value.Text}' is clipped at {size}.");
-                    }
-
                     foreach (TabControl tabs in Descendants(report).OfType<TabControl>())
                     {
                         for (int index = 0; index < tabs.TabPages.Count; index++)
                         {
                             tabs.SelectedIndex = index;
                             WinFormsApplication.DoEvents();
+                            TabPage selected = tabs.SelectedTab!;
                             Assert.IsFalse(page.VerticalScroll.Visible);
                             Assert.IsFalse(page.HorizontalScroll.Visible);
-                            Assert.IsTrue(VerticalScrollOwners(page).Count() <= 1, $"Report tab '{tabs.SelectedTab!.Text}' has competing vertical scrollbars at {size}.");
+                            Assert.IsTrue(VerticalScrollOwners(page).Count() <= 1, $"Report tab '{selected.Text}' has competing vertical scrollbars at {size}.");
+
+                            foreach (Label value in Descendants(selected).OfType<Label>().Where(label => label.AutoEllipsis && label.Font.Size >= 12F &&
+                                decimal.TryParse(label.Text, NumberStyles.Currency, CultureInfo.CurrentCulture, out _)))
+                            {
+                                int requiredWidth = TextRenderer.MeasureText(value.Text, value.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix).Width;
+                                Assert.IsTrue(value.ClientSize.Width >= requiredWidth, $"Report metric '{value.Text}' is clipped at {size}.");
+                            }
+
+                            foreach (DataGridView grid in Descendants(selected).OfType<DataGridView>().Where(grid => grid.Visible && grid.RowCount >= 2))
+                            {
+                                Assert.IsTrue(grid.DisplayedRowCount(false) >= 2, $"Report tab '{selected.Text}' must leave usable rows visible at {size}.");
+                            }
+
                             Capture(host, reportName + "-tab-" + index + "-" + size.Width, TestContext);
                         }
                     }
