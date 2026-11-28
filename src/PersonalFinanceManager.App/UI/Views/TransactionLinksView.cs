@@ -40,13 +40,12 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 3,
+                RowCount = 2,
                 BackColor = UiTheme.AppBackground
             };
 
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 132));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 170));
             Controls.Add(root);
 
             CardPanel filterCard = new()
@@ -70,73 +69,64 @@ namespace PersonalFinanceManager.App.UI.Views
             filterLayout.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
             filterCard.Controls.Add(filterLayout);
 
-            TableLayoutPanel criteriaRow = new()
+            FlowLayoutPanel criteriaRow = new()
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 10,
-                RowCount = 1,
                 BackColor = UiTheme.CardBackground,
                 Margin = new Padding(0, 0, 0, 6)
             };
 
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 66));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 250));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 16));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 16));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 60));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 42));
-            criteriaRow.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 90));
             filterLayout.Controls.Add(criteriaRow, 0, 0);
-            criteriaRow.Controls.Add(MakeLabel("Account", 62), 0, 0);
+            criteriaRow.Controls.Add(MakeLabel("Account", 62));
             _accountFilter.DropDownStyle = ComboBoxStyle.DropDownList;
-            _accountFilter.Dock = DockStyle.Fill;
-            criteriaRow.Controls.Add(_accountFilter, 1, 0);
-            criteriaRow.Controls.Add(MakeLabel("Link Type", 78), 3, 0);
+            _accountFilter.Width = 230;
+            criteriaRow.Controls.Add(_accountFilter);
+            criteriaRow.Controls.Add(MakeLabel("Link Type", 78));
             _linkTypeFilter.DropDownStyle = ComboBoxStyle.DropDown;
-            _linkTypeFilter.Dock = DockStyle.Fill;
-            criteriaRow.Controls.Add(_linkTypeFilter, 4, 0);
-            criteriaRow.Controls.Add(MakeLabel("Search", 56), 6, 0);
-            _search.Dock = DockStyle.Fill;
-            criteriaRow.Controls.Add(_search, 7, 0);
-            criteriaRow.Controls.Add(MakeLabel("Max", 38), 8, 0);
+            _linkTypeFilter.Width = 200;
+            criteriaRow.Controls.Add(_linkTypeFilter);
+            criteriaRow.Controls.Add(MakeLabel("Search", 56));
+            _search.Width = 220;
+            criteriaRow.Controls.Add(_search);
+            criteriaRow.Controls.Add(MakeLabel("Max", 38));
             _maxRows.Minimum = 1;
             _maxRows.Maximum = 10000;
             _maxRows.Value = 1000;
-            _maxRows.Dock = DockStyle.Fill;
-            criteriaRow.Controls.Add(_maxRows, 9, 0);
+            _maxRows.Width = 90;
+            criteriaRow.Controls.Add(_maxRows);
 
-            TableLayoutPanel actionRow = new()
+            FlowLayoutPanel actionRow = new()
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 5,
-                RowCount = 1,
                 BackColor = UiTheme.CardBackground
             };
-
-            for (int index = 0; index < 5; index++)
-            {
-                actionRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 20F));
-            }
 
             filterLayout.Controls.Add(actionRow, 0, 1);
             Button refresh = MakeActionButton("Refresh", true);
             refresh.Click += async (_, _) => await RefreshAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(refresh, 0, 0);
+            actionRow.Controls.Add(refresh);
             Button add = MakeActionButton("Add Link", false);
             add.Click += async (_, _) => await AddAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(add, 1, 0);
+            actionRow.Controls.Add(add);
             Button edit = MakeActionButton("Edit Link", false);
             edit.Click += async (_, _) => await EditAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(edit, 2, 0);
+            actionRow.Controls.Add(edit);
             Button delete = MakeActionButton("Delete Link", false);
             delete.Click += async (_, _) => await DeleteAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(delete, 3, 0);
+            actionRow.Controls.Add(delete);
             Button repair = MakeActionButton("Repair Data Links", false);
             repair.Click += async (_, _) => await RepairDataLinksAsync().ConfigureAwait(true);
-            actionRow.Controls.Add(repair, 4, 0);
+            actionRow.Controls.Add(repair);
+
+            TabControl tabs = new()
+            {
+                Dock = DockStyle.Fill,
+                Multiline = true
+            };
+
+            root.Controls.Add(tabs, 0, 1);
+            TabPage linksPage = new("Links");
+            tabs.TabPages.Add(linksPage);
 
             CardPanel gridCard = new()
             {
@@ -145,7 +135,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 Margin = new Padding(0, 0, 0, 10)
             };
 
-            root.Controls.Add(gridCard, 0, 1);
+            linksPage.Controls.Add(gridCard);
             _grid.Dock = DockStyle.Fill;
             _grid.AutoGenerateColumns = false;
             _grid.AllowUserToAddRows = false;
@@ -170,19 +160,13 @@ namespace PersonalFinanceManager.App.UI.Views
             _grid.Columns.Add(MakeColumn("Notes", "Notes", 260));
             gridCard.Controls.Add(_grid);
 
-            TableLayoutPanel details = new()
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 2,
-                RowCount = 1,
-                BackColor = UiTheme.AppBackground
-            };
-
-            details.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            details.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            root.Controls.Add(details, 0, 2);
-            details.Controls.Add(BuildDetailsCard("Source transaction", _sourceDetails), 0, 0);
-            details.Controls.Add(BuildDetailsCard("Linked transaction", _linkedDetails), 1, 0);
+            TabPage sourcePage = new("Source transaction");
+            sourcePage.Controls.Add(BuildDetailsCard("Source transaction", _sourceDetails));
+            tabs.TabPages.Add(sourcePage);
+            TabPage linkedPage = new("Linked transaction");
+            linkedPage.Controls.Add(BuildDetailsCard("Linked transaction", _linkedDetails));
+            tabs.TabPages.Add(linkedPage);
+            PageLayout.AutoSizeHeaders(root, 0);
             UiTheme.ApplyTo(this);
         }
 
@@ -227,7 +211,7 @@ namespace PersonalFinanceManager.App.UI.Views
             return new Button
             {
                 Text = text,
-                Dock = DockStyle.Fill,
+                Width = 150,
                 Height = 34,
                 Margin = new Padding(4, 3, 4, 3),
                 Tag = primary ? "PrimaryButton" : null

@@ -56,7 +56,7 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         };
 
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
-        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 132));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
@@ -192,6 +192,7 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         AddColumn(nameof(FinancialRule.IsTransfer), "Transfer", 125);
         AddColumn(nameof(FinancialRule.IsActive), "Active", 80);
         root.Controls.Add(_grid, 0, 3);
+        PageLayout.AutoSizeHeaders(root, 0, 1, 2);
         UiTheme.ApplyTo(this);
     }
 

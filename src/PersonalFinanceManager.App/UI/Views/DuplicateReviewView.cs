@@ -42,13 +42,11 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4,
+                RowCount = 2,
                 BackColor = UiTheme.AppBackground
             };
 
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 164));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 380));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 310));
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
             Panel filterCard = CreateCard();
@@ -59,39 +57,34 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel filters = new()
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 8,
+                ColumnCount = 1,
                 RowCount = 3
             };
 
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 80));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 280));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 210));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
             filters.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 70));
-            filters.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 100));
-            filters.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-            filters.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
-            filters.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+            filters.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            filters.RowStyles.Add(new RowStyle(SizeType.Absolute, 64));
+            filters.RowStyles.Add(new RowStyle(SizeType.AutoSize));
             filterCard.Controls.Add(filters);
-            filters.Controls.Add(MakeLabel("Account"), 0, 0);
-            _accountFilter.Dock = DockStyle.Fill;
+            FlowLayoutPanel criteria = new() { Dock = DockStyle.Fill };
+            filters.Controls.Add(criteria, 0, 0);
+            criteria.Controls.Add(new Label { Text = "Account", AutoSize = true, Margin = new Padding(3, 8, 3, 3) });
+            _accountFilter.Width = 240;
             _accountFilter.DropDownStyle = ComboBoxStyle.DropDownList;
-            filters.Controls.Add(_accountFilter, 1, 0);
-            filters.Controls.Add(MakeLabel("Status"), 2, 0);
-            _statusFilter.Dock = DockStyle.Fill;
+            criteria.Controls.Add(_accountFilter);
+            criteria.Controls.Add(new Label { Text = "Status", AutoSize = true, Margin = new Padding(3, 8, 3, 3) });
+            _statusFilter.Width = 200;
             _statusFilter.DropDownStyle = ComboBoxStyle.DropDownList;
-            filters.Controls.Add(_statusFilter, 3, 0);
-            filters.Controls.Add(MakeLabel("Search"), 4, 0);
-            _search.Dock = DockStyle.Fill;
-            filters.Controls.Add(_search, 5, 0);
-            filters.Controls.Add(MakeLabel("Max"), 6, 0);
-            _maxRows.Dock = DockStyle.Fill;
+            criteria.Controls.Add(_statusFilter);
+            criteria.Controls.Add(new Label { Text = "Search", AutoSize = true, Margin = new Padding(3, 8, 3, 3) });
+            _search.Width = 220;
+            criteria.Controls.Add(_search);
+            criteria.Controls.Add(new Label { Text = "Max", AutoSize = true, Margin = new Padding(3, 8, 3, 3) });
+            _maxRows.Width = 90;
             _maxRows.Minimum = 1;
             _maxRows.Maximum = 5000;
             _maxRows.Value = 500;
-            filters.Controls.Add(_maxRows, 7, 0);
+            criteria.Controls.Add(_maxRows);
 
             Label help = new()
             {
@@ -101,7 +94,6 @@ namespace PersonalFinanceManager.App.UI.Views
                 TextAlign = ContentAlignment.MiddleLeft
             };
 
-            filters.SetColumnSpan(help, 8);
             filters.Controls.Add(help, 0, 1);
 
             FlowLayoutPanel buttons = new()
@@ -111,7 +103,6 @@ namespace PersonalFinanceManager.App.UI.Views
                 WrapContents = false
             };
 
-            filters.SetColumnSpan(buttons, 8);
             filters.Controls.Add(buttons, 0, 2);
             Button refresh = MakeButton("Refresh", 96);
             refresh.Click += async (_, _) => await LoadDuplicatesAsync().ConfigureAwait(true);
@@ -137,7 +128,11 @@ namespace PersonalFinanceManager.App.UI.Views
             Panel gridCard = CreateCard();
             gridCard.Dock = DockStyle.Fill;
             gridCard.Padding = new Padding(12);
-            root.Controls.Add(gridCard, 0, 1);
+            TabControl tabs = new() { Dock = DockStyle.Fill, Multiline = true };
+            TabPage candidatesTab = new("Candidates");
+            candidatesTab.Controls.Add(gridCard);
+            tabs.TabPages.Add(candidatesTab);
+            root.Controls.Add(tabs, 0, 1);
             _grid.Dock = DockStyle.Fill;
             _grid.AutoGenerateColumns = false;
             _grid.AllowUserToAddRows = false;
@@ -158,20 +153,16 @@ namespace PersonalFinanceManager.App.UI.Views
             AddColumn("DuplicateReason", "Reason", 360);
             gridCard.Controls.Add(_grid);
 
-            TableLayoutPanel detailCards = new()
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 3,
-                RowCount = 1
-            };
-
-            detailCards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            detailCards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.33F));
-            detailCards.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 33.34F));
-            root.Controls.Add(detailCards, 0, 2);
-            detailCards.Controls.Add(BuildDetailsCard("Left / candidate", _candidateDetails), 0, 0);
-            detailCards.Controls.Add(BuildDetailsCard("Right / existing match", _existingDetails), 1, 0);
-            detailCards.Controls.Add(BuildDetailsCard("Review guidance", _reasonDetails), 2, 0);
+            TabPage candidateTab = new("Left / candidate");
+            candidateTab.Controls.Add(BuildDetailsCard("Left / candidate", _candidateDetails));
+            tabs.TabPages.Add(candidateTab);
+            TabPage existingTab = new("Right / existing match");
+            existingTab.Controls.Add(BuildDetailsCard("Right / existing match", _existingDetails));
+            tabs.TabPages.Add(existingTab);
+            TabPage guidanceTab = new("Review guidance");
+            guidanceTab.Controls.Add(BuildDetailsCard("Review guidance", _reasonDetails));
+            tabs.TabPages.Add(guidanceTab);
+            PageLayout.AutoSizeHeaders(root, 0);
         }
 
         private static CardPanel CreateCard()
@@ -180,17 +171,6 @@ namespace PersonalFinanceManager.App.UI.Views
             {
                 BackColor = UiTheme.CardBackground,
                 Margin = new Padding(0, 0, 0, 12)
-            };
-        }
-
-        private static Label MakeLabel(string text)
-        {
-            return new Label
-            {
-                Text = text,
-                Dock = DockStyle.Fill,
-                TextAlign = ContentAlignment.MiddleLeft,
-                ForeColor = UiTheme.TextSecondary
             };
         }
 

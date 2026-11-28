@@ -97,7 +97,9 @@ On first launch, PersonalFinanceManager opens the Setup page if no usable connec
 
 ### Appearance
 
-Use the theme toggle in the application header or the appearance option in **Settings** to switch between light and dark modes. The preference is saved for your Windows profile and restored at the next launch. Switching themes retains the open page, report filters, selections, and unsaved edits. Report charts, grids, and edit dialogs use the same palette.
+Use the theme toggle in the application header or the appearance option in **Settings** to switch between light and dark modes. The preference is saved for your Windows profile and restored at the next launch. Switching themes retains the open page, report filters, selections, and unsaved edits. The dark palette uses neutral charcoal and grayscale surfaces. Report charts, grids, edit dialogs, date fields, and calendar popups use the current theme.
+
+Table pages fit the available window so the table handles vertical scrolling. Longer report and planning sections are organized into tabs, avoiding a second page scrollbar around a scrolling table. Setup and Settings use one page-level scroll area for their forms.
 
 Windows high-contrast colors take precedence when high contrast is enabled. Native title bars and system-owned controls follow the capabilities of the installed Windows version; Windows 11 provides the most complete native dark-mode support.
 

@@ -82,7 +82,7 @@ namespace PersonalFinanceManager.App.UI
             Text = PersonalFinanceManagerIdentity.ProductName;
             StartPosition = FormStartPosition.CenterScreen;
             AutoScaleMode = AutoScaleMode.Dpi;
-            MinimumSize = new Size(1320, 820);
+            MinimumSize = new Size(1000, 700);
             Width = 1600;
             Height = 980;
             Font = UiTheme.BodyFont;
@@ -530,41 +530,9 @@ namespace PersonalFinanceManager.App.UI
 
             _contentPanel.Controls.Clear();
 
-            Panel pageHost = new()
-            {
-                Dock = DockStyle.Fill,
-                AutoScroll = true,
-                BackColor = UiTheme.AppBackground,
-                Padding = new Padding(0, 0, 10, 0)
-            };
-
-            view.Dock = DockStyle.None;
-            view.Location = new Point(0, 0);
-            view.Anchor = AnchorStyles.Top | AnchorStyles.Left | AnchorStyles.Right;
-            view.BackColor = UiTheme.AppBackground;
-
-            if (view is ScrollableControl scrollableControl)
-            {
-                scrollableControl.AutoScroll = false;
-            }
-
-            UiTheme.ApplyTo(view);
-            pageHost.Controls.Add(view);
-            pageHost.Resize += (_, _) => ResizeHostedView(pageHost, view);
+            PageHost pageHost = new(view);
             _contentPanel.Controls.Add(pageHost);
-            ResizeHostedView(pageHost, view);
-        }
-
-        private static void ResizeHostedView(ScrollableControl pageHost, Control view)
-        {
-            int verticalScrollbarPadding = SystemInformation.VerticalScrollBarWidth + 8;
-            int width = Math.Max(600, pageHost.ClientSize.Width - verticalScrollbarPadding);
-            int preferredHeight = view.LogicalToDeviceUnits(view is IPageLayoutControl pageLayoutControl ? pageLayoutControl.PreferredPageHeight : 1000);
-            int height = Math.Max(pageHost.ClientSize.Height - 2, preferredHeight);
-            view.SuspendLayout();
-            view.Width = width;
-            view.Height = height;
-            view.ResumeLayout(true);
+            UiTheme.ApplyTo(pageHost);
         }
 
         private void UpdateNavigationState()

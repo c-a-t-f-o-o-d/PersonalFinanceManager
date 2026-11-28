@@ -47,14 +47,13 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4,
+                RowCount = 3,
                 BackColor = UiTheme.AppBackground
             };
 
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
 
             CardPanel filterCard = new()
@@ -93,7 +92,6 @@ namespace PersonalFinanceManager.App.UI.Views
                 Margin = new Padding(0, 0, 0, 12)
             };
 
-            root.Controls.Add(chartCard, 0, 2);
             BuildChartCard(chartCard);
 
             CardPanel gridCard = new()
@@ -102,8 +100,9 @@ namespace PersonalFinanceManager.App.UI.Views
                 Padding = new Padding(12)
             };
 
-            root.Controls.Add(gridCard, 0, 3);
-            BuildGridTabs(gridCard);
+            root.Controls.Add(gridCard, 0, 2);
+            BuildGridTabs(gridCard, chartCard);
+            PageLayout.AutoSizeHeaders(root, 0);
             UiTheme.ApplyTo(this);
         }
 
@@ -196,10 +195,14 @@ namespace PersonalFinanceManager.App.UI.Views
             layout.Controls.Add(_chart, 0, 2);
         }
 
-        private void BuildGridTabs(Control parent)
+        private void BuildGridTabs(Control parent, Control overview)
         {
             TabControl tabs = new() { Dock = DockStyle.Fill };
             parent.Controls.Add(tabs);
+            TabPage overviewTab = new("Chart");
+            overviewTab.Controls.Add(overview);
+            tabs.TabPages.Add(overviewTab);
+
             TabPage projectionTab = new("Projection");
             tabs.TabPages.Add(projectionTab);
             ConfigureProjectionGrid();

@@ -1,5 +1,3 @@
-using System.Drawing.Imaging;
-using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using PersonalFinanceManager.App.UI;
 using PersonalFinanceManager.App.UI.Styling;
@@ -7,6 +5,7 @@ using PersonalFinanceManager.App.UI.Views;
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Data.Configuration;
 using PersonalFinanceManager.Data.Logging;
+using static PersonalFinanceManager.UiTests.UiTestSupport;
 using WinFormsApplication = System.Windows.Forms.Application;
 
 [assembly: DoNotParallelize]
@@ -80,6 +79,17 @@ namespace PersonalFinanceManager.UiTests
                     AssertReadable(UiTheme.Warning, UiTheme.CardBackground);
                     AssertReadable(grid.DefaultCellStyle.SelectionForeColor, grid.DefaultCellStyle.SelectionBackColor);
                     AssertNativeCaptionMode(form, dark);
+
+                    if (dark && !SystemInformation.HighContrast)
+                    {
+                        foreach (Color surface in new[] { UiTheme.AppBackground, UiTheme.SidebarBackground, UiTheme.CardBackground,
+                            UiTheme.InputBackground, UiTheme.GridHeader, UiTheme.GridSelected, UiTheme.GridAlternate,
+                            UiTheme.CardBorder, UiTheme.AccentSoft, primary.BackColor, primary.FlatAppearance.MouseOverBackColor })
+                        {
+                            Assert.AreEqual(surface.R, surface.G, "Dark surfaces should use neutral grayscale colors.");
+                            Assert.AreEqual(surface.G, surface.B, "Dark surfaces should not have a blue tint.");
+                        }
+                    }
 
                     foreach (Button button in new[] { primary, secondary })
                     {
@@ -364,26 +374,7 @@ namespace PersonalFinanceManager.UiTests
 
         private void Capture(Form form, string name)
         {
-            string directory = Path.Combine(TestContext.TestRunDirectory ?? AppContext.BaseDirectory, "Screenshots");
-            Directory.CreateDirectory(directory);
-            string path = Path.Combine(directory, name + ".png");
-            using Bitmap image = new(form.Width, form.Height);
-            form.DrawToBitmap(image, new Rectangle(Point.Empty, form.Size));
-            image.Save(path, ImageFormat.Png);
-            TestContext.AddResultFile(path);
-        }
-
-        private static IEnumerable<Control> Descendants(Control parent)
-        {
-            foreach (Control child in parent.Controls)
-            {
-                yield return child;
-
-                foreach (Control descendant in Descendants(child))
-                {
-                    yield return descendant;
-                }
-            }
+            UiTestSupport.Capture(form, name, TestContext);
         }
 
         private static void AssertReadable(Color foreground, Color background)
@@ -418,40 +409,5 @@ namespace PersonalFinanceManager.UiTests
         [DllImport("dwmapi.dll", ExactSpelling = true)]
         private static extern int DwmGetWindowAttribute(IntPtr window, int attribute, out int value, int size);
 
-        private static void RunOnUiThread(Action action)
-        {
-            Exception? failure = null;
-            Thread thread = new(() =>
-            {
-                try
-                {
-                    WinFormsApplication.EnableVisualStyles();
-                    action();
-                }
-                catch (Exception ex)
-                {
-                    failure = ex;
-                }
-                finally
-                {
-                    try
-                    {
-                        UiTheme.SetDarkMode(false);
-                    }
-                    catch (Exception ex)
-                    {
-                        failure ??= ex;
-                    }
-                }
-            }) { IsBackground = true };
-            thread.SetApartmentState(ApartmentState.STA);
-            thread.Start();
-            Assert.IsTrue(thread.Join(TimeSpan.FromSeconds(30)), "The UI operation did not complete within 30 seconds.");
-
-            if (failure is not null)
-            {
-                ExceptionDispatchInfo.Capture(failure).Throw();
-            }
-        }
     }
 }

@@ -1,3 +1,4 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManagerIdentity = PersonalFinanceManager.Core.Application.ApplicationIdentity;
 using PersonalFinanceManager.Data.Configuration;
 using PersonalFinanceManager.Application.Services.Contracts;
@@ -70,6 +71,7 @@ namespace PersonalFinanceManager.App.UI.Views
             root.Controls.Add(_status, 0, 1);
             ConfigureHistoryGrid();
             root.Controls.Add(_historyGrid, 0, 2);
+            PageLayout.AutoSizeHeaders(root, 0);
         }
 
         private static Label MakeLabel(string text, int width)

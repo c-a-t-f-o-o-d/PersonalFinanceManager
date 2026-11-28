@@ -6,6 +6,7 @@ namespace PersonalFinanceManager.App.UI.Styling
     {
         private const int _immersiveDarkMode = 20;
         private const uint _getMonthCalendar = 0x1008;
+        private const uint _setMonthCalendarColor = 0x100A;
 
         public static void Apply(Control control)
         {
@@ -23,7 +24,12 @@ namespace PersonalFinanceManager.App.UI.Styling
             }
 
             // Match the native theme classes used by Windows Forms 10 without recreating handles.
-            if (control is ComboBox comboBox)
+            if (control is DateTimePicker picker)
+            {
+                DateTimePickerTheme.Apply(picker);
+                ApplyCalendar(picker);
+            }
+            else if (control is ComboBox comboBox)
             {
                 _ = SetWindowTheme(comboBox.Handle, dark ? "DarkMode_CFD" : null, null);
                 ComboBoxInfo info = new() { Size = (uint)Marshal.SizeOf<ComboBoxInfo>() };
@@ -37,15 +43,16 @@ namespace PersonalFinanceManager.App.UI.Styling
             {
                 _ = SetWindowTheme(control.Handle, null, dark ? "DarkMode::FileExplorerBannerContainer" : null);
             }
-            else if (control is ButtonBase or TextBoxBase or ListBox or DateTimePicker or ScrollableControl or ScrollBar or UpDownBase)
+            else if (control is ButtonBase or TextBoxBase or ListBox or ScrollableControl or ScrollBar or UpDownBase)
             {
                 _ = SetWindowTheme(control.Handle, dark ? "DarkMode_Explorer" : null, null);
             }
 
-            if (control is DateTimePicker picker)
-            {
-                ApplyCalendar(picker);
-            }
+        }
+
+        public static void SetVisualStyles(IntPtr window, bool enabled)
+        {
+            _ = SetWindowTheme(window, enabled ? null : string.Empty, enabled ? null : string.Empty);
         }
 
         public static void ApplyCalendar(DateTimePicker picker)
@@ -60,8 +67,19 @@ namespace PersonalFinanceManager.App.UI.Styling
             if (calendar != IntPtr.Zero)
             {
                 bool dark = UiTheme.IsDarkMode && !SystemInformation.HighContrast;
-                _ = SetWindowTheme(calendar, dark ? "DarkMode_Explorer" : null, null);
+                SetVisualStyles(calendar, !dark);
+                SetCalendarColor(calendar, 0, UiTheme.InputBackground);
+                SetCalendarColor(calendar, 1, UiTheme.TextPrimary);
+                SetCalendarColor(calendar, 2, SystemInformation.HighContrast ? SystemColors.Highlight : UiTheme.GridSelected);
+                SetCalendarColor(calendar, 3, SystemInformation.HighContrast ? SystemColors.HighlightText : UiTheme.TextPrimary);
+                SetCalendarColor(calendar, 4, UiTheme.InputBackground);
+                SetCalendarColor(calendar, 5, UiTheme.TextMuted);
             }
+        }
+
+        private static void SetCalendarColor(IntPtr calendar, int portion, Color color)
+        {
+            _ = SendMessage(calendar, _setMonthCalendarColor, (IntPtr)portion, (IntPtr)ColorTranslator.ToWin32(color));
         }
 
         [DllImport("dwmapi.dll", ExactSpelling = true)]

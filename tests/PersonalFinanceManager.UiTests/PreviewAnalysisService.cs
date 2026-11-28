@@ -7,6 +7,7 @@ namespace PersonalFinanceManager.UiTests
     internal sealed class PreviewAnalysisService : IAnalysisService
     {
         private readonly FinancialReportCalculator _calculator;
+        public int AdditionalScopeCount { get; init; }
         private readonly Account _account = new()
         {
             AccountId = 1,
@@ -100,7 +101,13 @@ namespace PersonalFinanceManager.UiTests
 
         public Task<IReadOnlyList<SalarySpendingScopeOption>> GetSalarySpendingScopeOptionsAsync(SalarySpendingFilter filter, CancellationToken cancellationToken = default)
         {
-            return Task.FromResult(_calculator.SpendingOptions(filter));
+            IReadOnlyList<SalarySpendingScopeOption> options = _calculator.SpendingOptions(filter)
+                .Concat(Enumerable.Range(1, AdditionalScopeCount).Select(index => new SalarySpendingScopeOption
+                {
+                    Category = "Example category " + index,
+                    SpendingClass = "Household"
+                })).ToArray();
+            return Task.FromResult(options);
         }
 
         public Task<SalarySpendingAnalysis> GetSalarySpendingAnalysisAsync(SalarySpendingFilter filter, CancellationToken cancellationToken = default)

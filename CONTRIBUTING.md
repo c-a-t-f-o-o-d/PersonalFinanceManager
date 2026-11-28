@@ -35,7 +35,7 @@ $env:PFM_RUN_SQL_TESTS = "1"
 
 These tests create and remove isolated databases with a `PFM_` test prefix and a unique identifier on `(localdb)\MSSQLLocalDB`. They use synthetic activity to verify migration replay, duplicate approval, transfers, wallet funding, credit repayments, statement reconciliation, backups, starter categorization, and recurring-bill continuity. They do not use the application's saved connection string. The build pull-request job runs this suite; other environments skip it when the opt-in setting is absent.
 
-The `PersonalFinanceManager.UiTests` project runs on Windows and exercises real Windows Forms controls. It checks theme changes without losing edits or loaded report data and renders screens using synthetic financial records. The build job publishes these images as the `desktop-ui-previews` artifact for visual review. Local captures are written under the ignored `TestResults` directory; never add personal-data screenshots to the repository.
+The `PersonalFinanceManager.UiTests` project runs on Windows and exercises real Windows Forms controls. It checks theme changes without losing edits or loaded report data and renders screens using synthetic financial records. The public baseline verification workflow publishes these images as the `desktop-ui-previews` artifact for visual review. Local captures are written under the ignored `TestResults` directory; never add personal-data screenshots to the repository.
 
 If you need to check for private local terms, use an untracked file:
 

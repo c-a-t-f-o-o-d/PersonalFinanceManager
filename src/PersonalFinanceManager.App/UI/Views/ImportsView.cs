@@ -1,3 +1,4 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Application.Services.Contracts;
 
@@ -33,12 +34,11 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4
+                RowCount = 3
             };
 
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 82));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
             FlowLayoutPanel accountRow = new() { Dock = DockStyle.Fill };
@@ -71,7 +71,14 @@ namespace PersonalFinanceManager.App.UI.Views
             _summary.Dock = DockStyle.Fill;
             _summary.Multiline = true;
             _summary.ReadOnly = true;
-            root.Controls.Add(_summary, 0, 2);
+            _summary.ScrollBars = ScrollBars.Vertical;
+            TabControl tabs = new() { Dock = DockStyle.Fill };
+            TabPage previewTab = new("Transaction preview");
+            TabPage summaryTab = new("Import summary");
+            summaryTab.Controls.Add(_summary);
+            tabs.TabPages.Add(previewTab);
+            tabs.TabPages.Add(summaryTab);
+            root.Controls.Add(tabs, 0, 2);
             _grid.Dock = DockStyle.Fill;
             _grid.AutoGenerateColumns = false;
             _grid.AllowUserToAddRows = false;
@@ -91,7 +98,8 @@ namespace PersonalFinanceManager.App.UI.Views
             AddColumn("Merchant", "Merchant", 160);
             AddColumn("IsIncome", "Income", 70);
             AddColumn("IsTransfer", "Transfer", 70);
-            root.Controls.Add(_grid, 0, 3);
+            previewTab.Controls.Add(_grid);
+            PageLayout.AutoSizeHeaders(root, 0, 1);
         }
 
         private void AddColumn(string property, string header, int width, string? format = null)

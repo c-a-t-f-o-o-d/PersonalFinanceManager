@@ -23,11 +23,3 @@ jobs:
         env:
           PFM_RUN_SQL_TESTS: '1'
         run: ./scripts/verify-public-baseline.ps1 -SkipPackage
-      - name: Upload desktop UI previews
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: desktop-ui-previews
-          path: '**/TestResults/**/Screenshots/*.png'
-          if-no-files-found: warn
-          retention-days: 7

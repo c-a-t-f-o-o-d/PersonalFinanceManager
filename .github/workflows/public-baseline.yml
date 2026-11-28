@@ -19,4 +19,14 @@ jobs:
 
       - name: Verify public baseline
         shell: pwsh
+        env:
+          PFM_UI_PREVIEW_DIRECTORY: ${{ github.workspace }}/TestResults/Screenshots
         run: ./scripts/verify-public-baseline.ps1 -SkipPackage
+      - name: Upload desktop UI previews
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-ui-previews
+          path: 'TestResults/Screenshots/*.png'
+          if-no-files-found: error
+          retention-days: 7

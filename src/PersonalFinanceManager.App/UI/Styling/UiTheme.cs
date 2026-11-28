@@ -17,25 +17,25 @@ namespace PersonalFinanceManager.App.UI.Styling
         public static event EventHandler? ThemeChanged;
 
         public static bool IsDarkMode { get; private set; }
-        public static Color AppBackground => Surface(246, 248, 252, 17, 24, 39);
-        public static Color SidebarBackground => Surface(250, 252, 255, 15, 23, 36);
-        public static Color CardBackground => Surface(255, 255, 255, 25, 35, 51);
-        public static Color InputBackground => Surface(255, 255, 255, 19, 29, 45);
-        public static Color CardBorder => Surface(221, 227, 236, 54, 68, 88, SystemColors.WindowFrame);
-        public static Color TextPrimary => Ink(26, 37, 55, 234, 240, 249);
-        public static Color TextSecondary => Ink(81, 98, 120, 176, 191, 212);
-        public static Color TextMuted => Ink(103, 118, 138, 151, 168, 192);
-        public static Color Accent => Ink(37, 99, 235, 111, 166, 255, SystemColors.Highlight);
-        public static Color AccentDark => Ink(29, 78, 216, 169, 200, 255, SystemColors.HighlightText);
-        public static Color AccentSoft => Surface(232, 240, 255, 35, 56, 88, SystemColors.Highlight);
+        public static Color AppBackground => Surface(246, 248, 252, 18, 18, 18);
+        public static Color SidebarBackground => Surface(250, 252, 255, 15, 15, 15);
+        public static Color CardBackground => Surface(255, 255, 255, 26, 26, 26);
+        public static Color InputBackground => Surface(255, 255, 255, 20, 20, 20);
+        public static Color CardBorder => Surface(221, 227, 236, 63, 63, 63, SystemColors.WindowFrame);
+        public static Color TextPrimary => Ink(26, 37, 55, 235, 235, 235);
+        public static Color TextSecondary => Ink(81, 98, 120, 190, 190, 190);
+        public static Color TextMuted => Ink(103, 118, 138, 155, 155, 155);
+        public static Color Accent => Ink(37, 99, 235, 204, 204, 204, SystemColors.Highlight);
+        public static Color AccentDark => Ink(29, 78, 216, 236, 236, 236, SystemColors.HighlightText);
+        public static Color AccentSoft => Surface(232, 240, 255, 48, 48, 48, SystemColors.Highlight);
         public static Color Success => Ink(21, 128, 61, 94, 218, 146);
         public static Color Danger => Ink(185, 28, 28, 255, 143, 143);
         public static Color Warning => Ink(146, 81, 9, 251, 201, 105);
-        public static Color WarningBackground => Surface(255, 248, 220, 66, 49, 26);
-        public static Color GridHeader => Surface(242, 246, 251, 31, 44, 63);
-        public static Color GridSelected => Surface(222, 235, 255, 43, 67, 101, SystemColors.Highlight);
-        public static Color GridLine => Surface(229, 234, 241, 48, 62, 82, SystemColors.WindowFrame);
-        public static Color GridAlternate => Surface(249, 251, 254, 28, 39, 57);
+        public static Color WarningBackground => Surface(255, 248, 220, 44, 44, 44);
+        public static Color GridHeader => Surface(242, 246, 251, 35, 35, 35);
+        public static Color GridSelected => Surface(222, 235, 255, 64, 64, 64, SystemColors.Highlight);
+        public static Color GridLine => Surface(229, 234, 241, 48, 48, 48, SystemColors.WindowFrame);
+        public static Color GridAlternate => Surface(249, 251, 254, 30, 30, 30);
         public static Font TitleFont => _titleFont;
         public static Font PageSubtitleFont => _subtitleFont;
         public static Font SectionTitleFont => _sectionFont;
@@ -82,9 +82,9 @@ namespace PersonalFinanceManager.App.UI.Styling
             ArgumentNullException.ThrowIfNull(button);
             button.Tag = "PrimaryButton";
             GetStyle(button).ButtonRole = "PrimaryButton";
-            Color background = SystemInformation.HighContrast ? SystemColors.Highlight : IsDarkMode ? Color.FromArgb(49, 105, 205) : Accent;
+            Color background = SystemInformation.HighContrast ? SystemColors.Highlight : IsDarkMode ? Color.FromArgb(56, 56, 56) : Accent;
             Color foreground = SystemInformation.HighContrast ? SystemColors.HighlightText : Color.White;
-            StyleButton(button, background, foreground, Accent);
+            StyleButton(button, background, foreground, IsDarkMode && !SystemInformation.HighContrast ? Color.FromArgb(112, 112, 112) : Accent);
         }
 
         public static void StyleSecondaryButton(Button button)
@@ -461,8 +461,8 @@ namespace PersonalFinanceManager.App.UI.Styling
             button.FlatStyle = FlatStyle.Flat;
             button.FlatAppearance.BorderColor = borderColor;
             button.FlatAppearance.BorderSize = 1;
-            button.FlatAppearance.MouseOverBackColor = button.Tag is "PrimaryButton" ? IsDarkMode ? Color.FromArgb(53, 109, 211) : Color.FromArgb(29, 78, 216) : AccentSoft;
-            button.FlatAppearance.MouseDownBackColor = button.Tag is "PrimaryButton" ? Color.FromArgb(29, 78, 216) : GridSelected;
+            button.FlatAppearance.MouseOverBackColor = button.Tag is "PrimaryButton" ? IsDarkMode ? Color.FromArgb(76, 76, 76) : Color.FromArgb(29, 78, 216) : AccentSoft;
+            button.FlatAppearance.MouseDownBackColor = button.Tag is "PrimaryButton" ? IsDarkMode ? Color.FromArgb(92, 92, 92) : Color.FromArgb(29, 78, 216) : GridSelected;
 
             if (SystemInformation.HighContrast)
             {

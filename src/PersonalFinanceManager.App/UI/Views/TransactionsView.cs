@@ -1,3 +1,4 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Application.Services.Contracts;
 
@@ -168,6 +169,7 @@ namespace PersonalFinanceManager.App.UI.Views
             AddColumn("IsManual", "Manual", 70);
             AddColumn("Notes", "Notes", 220);
             root.Controls.Add(_grid, 0, 4);
+            PageLayout.AutoSizeHeaders(root, 0, 1, 2, 3);
         }
 
         private static Label MakeLabel(string text, int width)

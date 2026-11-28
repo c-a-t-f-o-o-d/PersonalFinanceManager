@@ -59,13 +59,12 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4,
+                RowCount = 3,
                 BackColor = UiTheme.AppBackground
             };
 
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 118));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 92));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 470));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
 
@@ -110,7 +109,6 @@ namespace PersonalFinanceManager.App.UI.Views
 
             chartRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 64));
             chartRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 36));
-            root.Controls.Add(chartRow, 0, 2);
             CardPanel pieCard = BuildChartCard("Expense Breakdown", "Where money is going for the selected period", _pieChart);
             chartRow.Controls.Add(pieCard, 0, 0);
             CardPanel monthlyCard = BuildChartCard("Monthly Expense Totals", "Spending trend by calendar month", _monthlyChart);
@@ -123,8 +121,9 @@ namespace PersonalFinanceManager.App.UI.Views
                 Margin = new Padding(0)
             };
 
-            root.Controls.Add(gridCard, 0, 3);
-            BuildGridTabs(gridCard);
+            root.Controls.Add(gridCard, 0, 2);
+            BuildGridTabs(gridCard, chartRow);
+            PageLayout.AutoSizeHeaders(root, 0);
             UiTheme.ApplyTo(this);
         }
 
@@ -317,7 +316,7 @@ namespace PersonalFinanceManager.App.UI.Views
             return card;
         }
 
-        private void BuildGridTabs(Control parent)
+        private void BuildGridTabs(Control parent, Control overview)
         {
             TabControl tabs = new()
             {
@@ -325,6 +324,10 @@ namespace PersonalFinanceManager.App.UI.Views
             };
 
             parent.Controls.Add(tabs);
+            TabPage overviewTab = new("Charts");
+            overviewTab.Controls.Add(overview);
+            tabs.TabPages.Add(overviewTab);
+
             TabPage summaryTab = new("Expense Summary");
             tabs.TabPages.Add(summaryTab);
             ConfigureSummaryGrid();

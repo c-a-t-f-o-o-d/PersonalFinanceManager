@@ -24,6 +24,7 @@ namespace PersonalFinanceManager.App.UI.Views
         }
 
         public int PreferredPageHeight => 1120;
+        public PageScrollMode ScrollMode => PageScrollMode.Page;
 
         private void InitializeLayout()
         {

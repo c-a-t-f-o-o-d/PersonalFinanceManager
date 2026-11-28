@@ -1,3 +1,4 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Application.Services.Contracts;
 
@@ -88,6 +89,7 @@ namespace PersonalFinanceManager.App.UI.Views
             AddColumn("NextPaymentDueDate", "Next Due", 100);
             AddColumn("NextPaymentAmount", "Next Payment", 110, "C2");
             root.Controls.Add(_grid, 0, 1);
+            PageLayout.AutoSizeHeaders(root, 0);
         }
 
         private void AddColumn(string property, string header, int width, string? format = null)

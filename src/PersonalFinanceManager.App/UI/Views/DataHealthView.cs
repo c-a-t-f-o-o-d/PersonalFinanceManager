@@ -106,6 +106,7 @@ namespace PersonalFinanceManager.App.UI.Views
             _grid.Columns.Add(MakeFillColumn(nameof(DataHealthCheckResult.Recommendation), "Recommendation", 420));
             gridCard.Controls.Add(_grid);
             UiTheme.StyleGrid(_grid);
+            PageLayout.AutoSizeHeaders(root, 0, 1);
             UiTheme.ApplyTo(this);
         }
 

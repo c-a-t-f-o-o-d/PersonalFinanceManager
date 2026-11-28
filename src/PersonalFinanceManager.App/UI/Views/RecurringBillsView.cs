@@ -1,3 +1,4 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Core.Planning;
 using PersonalFinanceManager.Application.Services.Contracts;
@@ -39,14 +40,22 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4
+                RowCount = 2
             };
 
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-            Controls.Add(root);
+            root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            TabControl tabs = new() { Dock = DockStyle.Fill };
+            TabPage billsTab = new("Saved bills");
+            billsTab.Controls.Add(root);
+            tabs.TabPages.Add(billsTab);
+            TabPage candidatesTab = new("Recurring candidates");
+            TableLayoutPanel candidateLayout = new() { Dock = DockStyle.Fill, RowCount = 2 };
+            candidateLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            candidateLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+            candidatesTab.Controls.Add(candidateLayout);
+            tabs.TabPages.Add(candidatesTab);
+            Controls.Add(tabs);
             FlowLayoutPanel billCommands = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
             root.Controls.Add(billCommands, 0, 0);
             Button add = new() { Text = "Add Bill", Width = 100 };
@@ -73,7 +82,7 @@ namespace PersonalFinanceManager.App.UI.Views
             ConfigureBillGrid();
             root.Controls.Add(_billGrid, 0, 1);
             FlowLayoutPanel candidateCommands = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
-            root.Controls.Add(candidateCommands, 0, 2);
+            candidateLayout.Controls.Add(candidateCommands, 0, 0);
             candidateCommands.Controls.Add(MakeLabel("Min transactions", 110));
             _minimumTransactions.Minimum = 2;
             _minimumTransactions.Maximum = 24;
@@ -105,7 +114,9 @@ namespace PersonalFinanceManager.App.UI.Views
 
             candidateCommands.Controls.Add(candidateHelp);
             ConfigureCandidateGrid();
-            root.Controls.Add(_candidateGrid, 0, 3);
+            candidateLayout.Controls.Add(_candidateGrid, 0, 1);
+            PageLayout.AutoSizeHeaders(root, 0);
+            PageLayout.AutoSizeHeaders(candidateLayout, 0);
         }
 
         private static Label MakeLabel(string text, int width)

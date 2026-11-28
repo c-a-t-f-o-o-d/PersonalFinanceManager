@@ -28,6 +28,7 @@ namespace PersonalFinanceManager.App.UI.Views
         }
 
         public int PreferredPageHeight => 900;
+        public PageScrollMode ScrollMode => PageScrollMode.Page;
 
         protected override void Dispose(bool disposing)
         {

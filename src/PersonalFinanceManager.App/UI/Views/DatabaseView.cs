@@ -1,3 +1,4 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.Data.Database;
 
 namespace PersonalFinanceManager.App.UI.Views
@@ -58,6 +59,7 @@ namespace PersonalFinanceManager.App.UI.Views
             _statusText.ScrollBars = ScrollBars.Vertical;
             _statusText.ReadOnly = true;
             root.Controls.Add(_statusText, 0, 1);
+            PageLayout.AutoSizeHeaders(root, 0);
         }
 
         private async Task RefreshStatusAsync()
