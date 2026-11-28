@@ -9,13 +9,14 @@ namespace PersonalFinanceManager.App.UI
 {
     public sealed class MainForm : ThemedForm
     {
-        private readonly Dictionary<string, Button> _navButtons = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, SidebarIconButton> _navButtons = new(StringComparer.OrdinalIgnoreCase);
         private readonly FileLogger _logger;
         private readonly Label _pageSubtitleLabel = new();
         private readonly Label _statusDetailLabel = new();
         private readonly Label _statusLabel = new();
         private readonly Label _titleLabel = new();
-        private readonly Button _themeToggle = new();
+        private readonly SidebarIconButton _themeToggle = new();
+        private readonly ToolTip _themeToolTip = new() { ShowAlways = true };
         private readonly Panel _contentPanel = new();
         private readonly SettingsService _settingsService;
         private AppServices _services;
@@ -29,6 +30,16 @@ namespace PersonalFinanceManager.App.UI
             _services = new AppServices(_settingsService.Load(), _logger);
             UiTheme.SetDarkMode(_services.Settings.UseDarkMode);
             InitializeLayout();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _themeToolTip.Dispose();
+            }
+
+            base.Dispose(disposing);
         }
 
         protected override async void OnLoad(EventArgs e)
@@ -121,7 +132,7 @@ namespace PersonalFinanceManager.App.UI
             TableLayoutPanel header = new()
             {
                 Dock = DockStyle.Fill,
-                ColumnCount = 2,
+                ColumnCount = 1,
                 RowCount = 2,
                 Margin = Padding.Empty,
                 Padding = new Padding(0, 0, 4, 16),
@@ -129,7 +140,6 @@ namespace PersonalFinanceManager.App.UI
             };
 
             header.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            header.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
             header.RowStyles.Add(new RowStyle(SizeType.Absolute, 38));
             header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             main.Controls.Add(header, 0, 0);
@@ -144,15 +154,6 @@ namespace PersonalFinanceManager.App.UI
             _pageSubtitleLabel.Margin = new Padding(1, 3, 12, 0);
             UiTheme.SetTextRole(_pageSubtitleLabel, "SecondaryText");
             header.Controls.Add(_pageSubtitleLabel, 0, 1);
-            _themeToggle.Name = "ThemeToggle";
-            _themeToggle.Dock = DockStyle.Top;
-            _themeToggle.Height = 36;
-            _themeToggle.Margin = new Padding(8, 6, 0, 0);
-            _themeToggle.Click += (_, _) => ToggleAppearance();
-            UiTheme.StyleSecondaryButton(_themeToggle);
-            UpdateThemeToggle();
-            header.Controls.Add(_themeToggle, 1, 0);
-            header.SetRowSpan(_themeToggle, 2);
             _contentPanel.Dock = DockStyle.Fill;
             _contentPanel.Margin = Padding.Empty;
             _contentPanel.BackColor = UiTheme.AppBackground;
@@ -242,33 +243,67 @@ namespace PersonalFinanceManager.App.UI
 
             sidebarLayout.Controls.Add(nav, 0, 1);
             AddNavHeading(nav, "WORKSPACE");
-            AddNavButton(nav, "Accounts", "Accounts", ShowAccounts);
-            AddNavButton(nav, "Transactions", "Transactions", ShowTransactions);
-            AddNavButton(nav, "Imports", "Import statements", ShowImports);
-            AddNavButton(nav, "Rules", "Rules & categories", ShowRules);
+            AddNavButton(nav, "Accounts", "Accounts", SidebarIcon.Accounts, ShowAccounts);
+            AddNavButton(nav, "Transactions", "Transactions", SidebarIcon.Transactions, ShowTransactions);
+            AddNavButton(nav, "Imports", "Import statements", SidebarIcon.Imports, ShowImports);
+            AddNavButton(nav, "Rules", "Rules & categories", SidebarIcon.Rules, ShowRules);
             AddNavHeading(nav, "REVIEW");
-            AddNavButton(nav, "Duplicate Review", "Duplicate review", ShowDuplicateReview);
-            AddNavButton(nav, "Transaction Links", "Transaction links", ShowTransactionLinks);
-            AddNavButton(nav, "Data Health", "Data health", ShowDataHealth);
+            AddNavButton(nav, "Duplicate Review", "Duplicate review", SidebarIcon.DuplicateReview, ShowDuplicateReview);
+            AddNavButton(nav, "Transaction Links", "Transaction links", SidebarIcon.TransactionLinks, ShowTransactionLinks);
+            AddNavButton(nav, "Data Health", "Data health", SidebarIcon.DataHealth, ShowDataHealth);
             AddNavHeading(nav, "PLAN");
-            AddNavButton(nav, "Expense Analysis", "Expense analysis", ShowReports);
-            AddNavButton(nav, "Money In/Out", "Money in / out", ShowMoneyInOut);
-            AddNavButton(nav, "Salary Needed", "Salary needed", ShowSalaryAnalysis);
-            AddNavButton(nav, "Runway", "Savings runway", ShowRunway);
-            AddNavButton(nav, "Bills", "Recurring bills", ShowBills);
+            AddNavButton(nav, "Expense Analysis", "Expense analysis", SidebarIcon.ExpenseAnalysis, ShowReports);
+            AddNavButton(nav, "Money In/Out", "Money in / out", SidebarIcon.MoneyInOut, ShowMoneyInOut);
+            AddNavButton(nav, "Salary Needed", "Salary needed", SidebarIcon.SalaryNeeded, ShowSalaryAnalysis);
+            AddNavButton(nav, "Runway", "Savings runway", SidebarIcon.Runway, ShowRunway);
+            AddNavButton(nav, "Bills", "Recurring bills", SidebarIcon.Bills, ShowBills);
             AddNavHeading(nav, "MANAGE");
-            AddNavButton(nav, "Setup", "Getting started", ShowSetup);
-            AddNavButton(nav, "Backup/Export", "Backup & export", ShowBackupExport);
-            AddNavButton(nav, "Settings", "Settings", ShowSettings);
-            AddNavButton(nav, "Database", "Database", ShowDatabase);
+            AddNavButton(nav, "Setup", "Getting started", SidebarIcon.Setup, ShowSetup);
+            AddNavButton(nav, "Backup/Export", "Backup & export", SidebarIcon.BackupExport, ShowBackupExport);
+            AddNavButton(nav, "Settings", "Settings", SidebarIcon.Settings, ShowSettings);
+            AddNavButton(nav, "Database", "Database", SidebarIcon.Database, ShowDatabase);
 
-            nav.SizeChanged += (_, _) =>
+            _themeToggle.Name = "ThemeToggle";
+            _themeToggle.Size = new Size(38, 38);
+            _themeToggle.Margin = new Padding(4, 8, 0, 6);
+            _themeToggle.Padding = Padding.Empty;
+            _themeToggle.ImageAlign = ContentAlignment.MiddleCenter;
+            _themeToggle.TextImageRelation = TextImageRelation.Overlay;
+            _themeToggle.Click += (_, _) => ToggleAppearance();
+            UiTheme.StyleSecondaryButton(_themeToggle);
+            UpdateThemeToggle();
+            nav.Controls.Add(_themeToggle);
+            bool resizingNavigation = false;
+
+            nav.Layout += (_, _) =>
             {
-                int width = Math.Max(150, nav.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2);
-
-                foreach (Control child in nav.Controls)
+                if (resizingNavigation)
                 {
-                    child.Width = width;
+                    return;
+                }
+
+                resizingNavigation = true;
+
+                try
+                {
+                    int width = Math.Max(1, nav.ClientSize.Width - nav.Padding.Horizontal);
+
+                    foreach (Control child in nav.Controls)
+                    {
+                        if (ReferenceEquals(child, _themeToggle))
+                        {
+                            int size = _themeToggle.LogicalToDeviceUnits(38);
+                            child.Size = new Size(size, size);
+                        }
+                        else
+                        {
+                            child.Width = Math.Max(1, width - child.Margin.Horizontal);
+                        }
+                    }
+                }
+                finally
+                {
+                    resizingNavigation = false;
                 }
             };
 
@@ -310,11 +345,13 @@ namespace PersonalFinanceManager.App.UI
             nav.Controls.Add(heading);
         }
 
-        private void AddNavButton(FlowLayoutPanel nav, string key, string text, Action action)
+        private void AddNavButton(FlowLayoutPanel nav, string key, string text, SidebarIcon icon, Action action)
         {
-            Button button = new()
+            SidebarIconButton button = new()
             {
                 Text = text,
+                Icon = icon,
+                Name = "Navigation" + icon,
                 Width = 198,
                 Height = 34,
                 Margin = new Padding(0, 0, 0, 2),
@@ -323,6 +360,7 @@ namespace PersonalFinanceManager.App.UI
             };
 
             UiTheme.StyleNavButton(button, false);
+            button.Padding = new Padding(button.LogicalToDeviceUnits(12), 0, button.LogicalToDeviceUnits(4), 0);
             button.Click += (_, _) => action();
             _navButtons[key] = button;
             nav.Controls.Add(button);
@@ -365,9 +403,14 @@ namespace PersonalFinanceManager.App.UI
 
         private void UpdateThemeToggle()
         {
-            _themeToggle.Text = UiTheme.IsDarkMode ? "Light mode" : "Dark mode";
-            _themeToggle.AccessibleName = "Change color theme";
-            _themeToggle.AccessibleDescription = UiTheme.IsDarkMode ? "Dark mode is active. Switch to light mode." : "Light mode is active. Switch to dark mode.";
+            string action = UiTheme.IsDarkMode ? "Switch to light mode" : "Switch to dark mode";
+            string description = UiTheme.IsDarkMode ? "Dark mode is active. Switch to light mode." : "Light mode is active. Switch to dark mode.";
+            _themeToggle.Text = string.Empty;
+            _themeToggle.Icon = UiTheme.IsDarkMode ? SidebarIcon.Moon : SidebarIcon.Sun;
+            _themeToggle.AccessibleName = action;
+            _themeToggle.AccessibleDescription = description;
+            _themeToolTip.SetToolTip(_themeToggle, description);
+            _themeToggle.RefreshIcon();
         }
 
         private void ShowSetup()
@@ -537,9 +580,12 @@ namespace PersonalFinanceManager.App.UI
 
         private void UpdateNavigationState()
         {
-            foreach (KeyValuePair<string, Button> pair in _navButtons)
+            foreach (KeyValuePair<string, SidebarIconButton> pair in _navButtons)
             {
-                UiTheme.StyleNavButton(pair.Value, string.Equals(pair.Key, _selectedNavigation, StringComparison.OrdinalIgnoreCase));
+                SidebarIconButton button = pair.Value;
+                UiTheme.StyleNavButton(button, string.Equals(pair.Key, _selectedNavigation, StringComparison.OrdinalIgnoreCase));
+                button.Padding = new Padding(button.LogicalToDeviceUnits(12), 0, button.LogicalToDeviceUnits(4), 0);
+                button.RefreshIcon();
             }
         }
     }

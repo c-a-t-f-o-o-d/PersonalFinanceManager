@@ -123,6 +123,7 @@ namespace PersonalFinanceManager.UiTests
                     using MainForm main = new(settings, new FileLogger());
                     main.Show();
                     WinFormsApplication.DoEvents();
+                    AssertSidebarIcons(main, dark: false);
                     Descendants(main).OfType<Button>().Single(button => button.AccessibleName == "Settings").PerformClick();
                     SettingsView page = Descendants(main).OfType<SettingsView>().Single();
                     TextBox connection = Descendants(page).OfType<TextBox>().Single(input => input.Name == "ConnectionString");
@@ -139,6 +140,7 @@ namespace PersonalFinanceManager.UiTests
                     Assert.AreEqual(unsavedConnection, connection.Text);
                     Assert.IsTrue(settings.Load().UseDarkMode);
                     Assert.AreEqual(string.Empty, settings.Load().ConnectionString);
+                    AssertSidebarIcons(main, dark: true);
                     Capture(main, "settings-dark");
 
                     darkMode.Checked = false;
@@ -147,6 +149,7 @@ namespace PersonalFinanceManager.UiTests
                     Assert.IsFalse(settings.Load().UseDarkMode);
                     Assert.AreEqual(unsavedConnection, connection.Text);
                     Assert.AreSame(page, Descendants(main).OfType<SettingsView>().Single());
+                    AssertSidebarIcons(main, dark: false);
                     main.Close();
                 }
                 finally
@@ -288,6 +291,18 @@ namespace PersonalFinanceManager.UiTests
                     Assert.IsFalse(setupHost.HorizontalScroll.Visible);
                     Assert.IsFalse(setup.VerticalScroll.Visible);
                     Capture(main, "setup-minimum-bottom" + (dark ? "-dark" : "-light"));
+                    SidebarIconButton themeToggle = Descendants(main).OfType<SidebarIconButton>().Single(button => button.Name == "ThemeToggle");
+                    Button database = Descendants(main).OfType<Button>().Single(button => button.AccessibleName == "Database");
+                    FlowLayoutPanel navigation = (FlowLayoutPanel)database.Parent!;
+                    navigation.ScrollControlIntoView(themeToggle);
+                    WinFormsApplication.DoEvents();
+                    Assert.IsTrue(themeToggle.PointToScreen(Point.Empty).Y >= database.PointToScreen(new Point(0, database.Height)).Y,
+                        "The theme toggle must appear below Database.");
+                    Rectangle toggleBounds = navigation.RectangleToClient(themeToggle.RectangleToScreen(themeToggle.ClientRectangle));
+                    Assert.IsTrue(navigation.ClientRectangle.Contains(toggleBounds), "The theme toggle must remain reachable at the minimum window size.");
+                    Assert.IsFalse(navigation.HorizontalScroll.Visible);
+                    AssertSidebarIcons(main, dark);
+                    Capture(main, "navigation-minimum" + (dark ? "-dark" : "-light"));
                     main.Close();
 
                     Account account = new()
@@ -402,7 +417,50 @@ namespace PersonalFinanceManager.UiTests
             UiTestSupport.Capture(form, name, TestContext);
         }
 
+        private static void AssertSidebarIcons(MainForm form, bool dark)
+        {
+            SidebarIconButton toggle = Descendants(form).OfType<SidebarIconButton>().Single(button => button.Name == "ThemeToggle");
+            Assert.AreEqual(string.Empty, toggle.Text, "The theme toggle should display only its icon.");
+            Assert.AreEqual(dark ? SidebarIcon.Moon : SidebarIcon.Sun, toggle.Icon);
+            Assert.IsFalse(string.IsNullOrWhiteSpace(toggle.AccessibleName));
+            Assert.IsFalse(string.IsNullOrWhiteSpace(toggle.AccessibleDescription));
+
+            foreach (SidebarIconButton button in Descendants(form).OfType<SidebarIconButton>())
+            {
+                Assert.IsNotNull(button.Image, $"Menu '{button.AccessibleName}' must have a visible icon.");
+                using Bitmap icon = new(button.Image);
+                int visiblePixels = 0;
+
+                for (int y = 0; y < icon.Height; y++)
+                {
+                    for (int x = 0; x < icon.Width; x++)
+                    {
+                        Color pixel = icon.GetPixel(x, y);
+                        double opacity = pixel.A / 255D;
+                        Color displayed = Color.FromArgb(
+                            (int)Math.Round(pixel.R * opacity + button.BackColor.R * (1D - opacity)),
+                            (int)Math.Round(pixel.G * opacity + button.BackColor.G * (1D - opacity)),
+                            (int)Math.Round(pixel.B * opacity + button.BackColor.B * (1D - opacity)));
+                        bool colored = Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) - Math.Min(pixel.R, Math.Min(pixel.G, pixel.B)) >= 16;
+
+                        if (Contrast(displayed, button.BackColor) >= 3D && (colored || SystemInformation.HighContrast))
+                        {
+                            visiblePixels++;
+                        }
+                    }
+                }
+
+                Assert.IsGreaterThan(8, visiblePixels, $"Menu '{button.AccessibleName}' needs a colored icon with readable contrast in the active theme.");
+            }
+        }
+
         private static void AssertReadable(Color foreground, Color background)
+        {
+            double ratio = Contrast(foreground, background);
+            Assert.IsGreaterThanOrEqualTo(4.5D, ratio, $"Text contrast is {ratio:F2}:1 for {foreground} on {background}.");
+        }
+
+        private static double Contrast(Color foreground, Color background)
         {
             static double Luminance(Color color)
             {
@@ -417,8 +475,7 @@ namespace PersonalFinanceManager.UiTests
 
             double first = Luminance(foreground);
             double second = Luminance(background);
-            double ratio = (Math.Max(first, second) + 0.05D) / (Math.Min(first, second) + 0.05D);
-            Assert.IsGreaterThanOrEqualTo(4.5D, ratio, $"Text contrast is {ratio:F2}:1 for {foreground} on {background}.");
+            return (Math.Max(first, second) + 0.05D) / (Math.Min(first, second) + 0.05D);
         }
 
         private static void AssertNativeCaptionMode(Form form, bool dark)

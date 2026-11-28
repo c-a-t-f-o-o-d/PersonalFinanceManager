@@ -1,6 +1,7 @@
 using System.Drawing.Imaging;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace PersonalFinanceManager.App.UI.Styling
 {
@@ -49,12 +50,28 @@ namespace PersonalFinanceManager.App.UI.Styling
                     Attach(_picker.Handle, Refresh);
                     DateTimePickerInfo info = new() { Size = (uint)Marshal.SizeOf<DateTimePickerInfo>() };
                     _ = SendPickerMessage(_picker.Handle, _getPickerInfo, IntPtr.Zero, ref info);
-                    Attach(info.Edit, null);
-                    Attach(info.UpDown, null);
+                    AttachChild(info.Edit, "Edit");
+                    AttachChild(info.UpDown, "msctls_updown32");
                 }
                 finally
                 {
                     _refreshing = false;
+                }
+            }
+
+            private void AttachChild(IntPtr handle, string expectedClass)
+            {
+                if (handle == IntPtr.Zero || !IsChild(_picker.Handle, handle))
+                {
+                    return;
+                }
+
+                StringBuilder className = new(64);
+                _ = GetClassName(handle, className, className.Capacity);
+
+                if (string.Equals(className.ToString(), expectedClass, StringComparison.OrdinalIgnoreCase))
+                {
+                    Attach(handle, null);
                 }
             }
 
@@ -268,6 +285,15 @@ namespace PersonalFinanceManager.App.UI.Styling
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool RedrawWindow(IntPtr window, IntPtr updateRectangle, IntPtr updateRegion, uint flags);
+
+        [DllImport("user32.dll", EntryPoint = "GetClassNameW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static extern int GetClassName(IntPtr window, StringBuilder className, int capacity);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsChild(IntPtr parent, IntPtr window);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeRectangle

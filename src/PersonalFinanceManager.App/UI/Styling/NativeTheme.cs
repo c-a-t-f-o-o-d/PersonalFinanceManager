@@ -91,6 +91,7 @@ namespace PersonalFinanceManager.App.UI.Styling
                             && SendMessage(pickerHandle, _getMonthCalendar, IntPtr.Zero, IntPtr.Zero) == calendar)
                         {
                             FitCalendar(picker, calendar);
+                            _ = RedrawWindow(calendar, IntPtr.Zero, IntPtr.Zero, 0x0001 | 0x0004 | 0x0080 | 0x0100 | 0x0400);
                         }
                     }));
                 }
@@ -111,23 +112,60 @@ namespace PersonalFinanceManager.App.UI.Styling
             int width = Math.Max(bounds.Right - bounds.Left, Math.Max(minimum.Right, todayWidth));
             int height = Math.Max(bounds.Bottom - bounds.Top, minimum.Bottom);
 
-            if (width == bounds.Right - bounds.Left && height == bounds.Bottom - bounds.Top)
+            IntPtr popup = calendar;
+            NativeRectangle popupBounds = bounds;
+
+            if ((GetWindowLong(calendar, -16) & 0x40000000) != 0)
+            {
+                IntPtr ancestor = GetAncestor(calendar, 2);
+                IntPtr form = picker.FindForm()?.Handle ?? IntPtr.Zero;
+
+                // Some Windows versions host the calendar inside a separate native popup.
+                // Child positions use parent-client coordinates, so leave the child's origin unchanged.
+                if (ancestor == IntPtr.Zero || ancestor == calendar || ancestor == form
+                    || (GetWindowLong(ancestor, -16) & unchecked((int)0x80000000)) == 0
+                    || !GetWindowRect(ancestor, out popupBounds))
+                {
+                    _ = SetWindowPos(calendar, IntPtr.Zero, 0, 0, width, height, 0x0002 | 0x0004 | 0x0010);
+                    return;
+                }
+
+                popup = ancestor;
+            }
+
+            int popupWidth = popupBounds.Right - popupBounds.Left + width - (bounds.Right - bounds.Left);
+            int popupHeight = popupBounds.Bottom - popupBounds.Top + height - (bounds.Bottom - bounds.Top);
+            NativePoint clientOrigin = default;
+
+            if (popup != calendar && GetClientRect(popup, out NativeRectangle client) && ClientToScreen(popup, ref clientOrigin))
+            {
+                popupWidth = Math.Max(popupWidth, bounds.Left - clientOrigin.X + width + popupBounds.Right - popupBounds.Left - client.Right);
+                popupHeight = Math.Max(popupHeight, bounds.Top - clientOrigin.Y + height + popupBounds.Bottom - popupBounds.Top - client.Bottom);
+            }
+
+            if (width == bounds.Right - bounds.Left && height == bounds.Bottom - bounds.Top
+                && popupWidth == popupBounds.Right - popupBounds.Left && popupHeight == popupBounds.Bottom - popupBounds.Top)
             {
                 return;
             }
 
-            int left = picker.DropDownAlign == LeftRightAlignment.Right ? bounds.Right - width : bounds.Left;
-            int top = bounds.Top;
+            int left = picker.DropDownAlign == LeftRightAlignment.Right ? popupBounds.Right - popupWidth : popupBounds.Left;
+            int top = popupBounds.Top;
 
-            if (GetWindowRect(picker.Handle, out NativeRectangle pickerBounds) && bounds.Bottom <= pickerBounds.Top)
+            if (GetWindowRect(picker.Handle, out NativeRectangle pickerBounds) && popupBounds.Bottom <= pickerBounds.Top)
             {
-                top = bounds.Bottom - height;
+                top = popupBounds.Bottom - popupHeight;
             }
 
             Rectangle workingArea = Screen.FromHandle(picker.Handle).WorkingArea;
-            left = Math.Clamp(left, workingArea.Left, Math.Max(workingArea.Left, workingArea.Right - width));
-            top = Math.Clamp(top, workingArea.Top, Math.Max(workingArea.Top, workingArea.Bottom - height));
-            _ = SetWindowPos(calendar, IntPtr.Zero, left, top, width, height, 0x0004 | 0x0010);
+            left = Math.Clamp(left, workingArea.Left, Math.Max(workingArea.Left, workingArea.Right - popupWidth));
+            top = Math.Clamp(top, workingArea.Top, Math.Max(workingArea.Top, workingArea.Bottom - popupHeight));
+            _ = SetWindowPos(popup, IntPtr.Zero, left, top, popupWidth, popupHeight, 0x0004 | 0x0010);
+
+            if (popup != calendar)
+            {
+                _ = SetWindowPos(calendar, IntPtr.Zero, 0, 0, width, height, 0x0002 | 0x0004 | 0x0010);
+            }
         }
 
         private static void SetCalendarColor(IntPtr calendar, int portion, Color color)
@@ -164,7 +202,37 @@ namespace PersonalFinanceManager.App.UI.Styling
         [DllImport("user32.dll", ExactSpelling = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetClientRect(IntPtr window, out NativeRectangle rectangle);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ClientToScreen(IntPtr window, ref NativePoint point);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int left, int top, int width, int height, uint flags);
+
+        [DllImport("user32.dll", EntryPoint = "GetWindowLongW", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static extern int GetWindowLong(IntPtr window, int index);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool RedrawWindow(IntPtr window, IntPtr updateRectangle, IntPtr updateRegion, uint flags);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativePoint
+        {
+            public int X;
+            public int Y;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeRectangle
