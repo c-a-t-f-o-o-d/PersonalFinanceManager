@@ -8,7 +8,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class MoneyInOutView : UserControl, IPageLayoutControl
+    public sealed class MoneyInOutView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IAnalysisService _analysisService;
         private readonly ComboBox _accountFilter = new();
@@ -26,12 +26,14 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly DataGridView _detailGrid = new();
         private readonly BindingSource _monthlySource = new();
         private readonly BindingSource _detailSource = new();
-        private IReadOnlyList<Account> _accounts = Array.Empty<Account>();
 
         public MoneyInOutView(IAnalysisService analysisService)
         {
             _analysisService = analysisService;
             InitializeLayout();
+            BindAccounts(Array.Empty<Account>());
+            DateTime today = DateTime.Today;
+            SetDateRange(new DateTime(today.Year, today.Month, 1).AddMonths(-11), today);
         }
 
         public int PreferredPageHeight => 1150;
@@ -39,8 +41,13 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await LoadAccountsAsync().ConfigureAwait(true);
-            await SetLast12MonthsAsync().ConfigureAwait(true);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
+            await Task.WhenAll(LoadAccountsAsync(), RefreshAsync()).ConfigureAwait(true);
         }
 
         private void InitializeLayout()
@@ -165,7 +172,7 @@ namespace PersonalFinanceManager.App.UI.Views
             filters.Controls.Add(_maxRows);
             Button refresh = new() { Text = "Refresh", Width = 94, Height = 30 };
             UiTheme.StylePrimaryButton(refresh);
-            refresh.Click += async (_, _) => await RefreshAsync().ConfigureAwait(true);
+            refresh.Click += async (_, _) => await Task.WhenAll(LoadAccountsAsync(), RefreshAsync()).ConfigureAwait(true);
             filters.Controls.Add(refresh);
 
             FlowLayoutPanel ranges = new()
@@ -335,14 +342,20 @@ namespace PersonalFinanceManager.App.UI.Views
             return column;
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            _accounts = await _analysisService.GetAccountsAsync().ConfigureAwait(true);
+            return LoadLatestAsync("accounts", "Loading account options...", _analysisService.GetAccountsAsync, BindAccounts);
+        }
+
+        private void BindAccounts(IReadOnlyList<Account> accounts)
+        {
+            int? selectedAccountId = (_accountFilter.SelectedItem as AccountOption)?.AccountId;
             List<AccountOption> options = new() { new AccountOption(null, "All Cash Accounts") };
-            options.AddRange(_accounts.Where(account => AccountClassification.IsCash(account.AccountType)).Select(account => new AccountOption(account.AccountId, account.DisplayName)));
-            _accountFilter.DataSource = options;
+            options.AddRange(accounts.Where(account => AccountClassification.IsCash(account.AccountType)).Select(account => new AccountOption(account.AccountId, account.DisplayName)));
             _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
             _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            _accountFilter.DataSource = options;
+            _accountFilter.SelectedItem = options.FirstOrDefault(option => option.AccountId == selectedAccountId) ?? options[0];
         }
 
         private async Task SetCurrentMonthAsync()
@@ -390,6 +403,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task RefreshAsync()
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             ExpenseReportFilter filter = BuildFilter();
 
             if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
@@ -398,7 +416,12 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            CashFlowReportResult report = await _analysisService.GetCashFlowReportAsync(filter).ConfigureAwait(true);
+            await LoadLatestAsync("report", "Loading cash flow...",
+                cancellationToken => _analysisService.GetCashFlowReportAsync(filter, cancellationToken), ApplyReport).ConfigureAwait(true);
+        }
+
+        private void ApplyReport(CashFlowReportResult report)
+        {
             MoneyInOutSummary summary = report.Summary;
             IReadOnlyList<MoneyInOutMonthlyItem> monthly = report.Monthly;
             IReadOnlyList<MoneyInOutDetailItem> details = report.Details;

@@ -8,7 +8,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class RunwayView : UserControl, IPageLayoutControl
+    public sealed class RunwayView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IRunwayWorkflowService _runwayService;
         private readonly ComboBox _scenario = new();
@@ -37,6 +37,12 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
             await RefreshAsync().ConfigureAwait(true);
         }
 
@@ -317,17 +323,30 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task RefreshAsync()
         {
-            IReadOnlyList<Account> accounts = await _runwayService.GetAccountsAsync().ConfigureAwait(true);
-            IReadOnlyList<RecurringBill> bills = await _runwayService.GetBillsAsync().ConfigureAwait(true);
+            if (!IsPageActive)
+            {
+                return;
+            }
 
-            RunwayAnalysisResult result = new RunwayCalculator().Calculate(
-                accounts,
-                bills,
-                Convert.ToString(_scenario.SelectedItem) ?? "Strict",
-                _monthlyIncome.Value,
-                decimal.ToInt32(_projectionMonths.Value),
-                DateOnly.FromDateTime(DateTime.Today));
+            string scenario = Convert.ToString(_scenario.SelectedItem) ?? "Strict";
+            decimal monthlyIncome = _monthlyIncome.Value;
+            int projectionMonths = decimal.ToInt32(_projectionMonths.Value);
+            DateOnly asOfDate = DateOnly.FromDateTime(DateTime.Today);
 
+            await LoadLatestAsync("runway", "Loading balances and recurring bills...", async cancellationToken =>
+            {
+                Task<IReadOnlyList<Account>> accountsTask = _runwayService.GetAccountsAsync(cancellationToken);
+                Task<IReadOnlyList<RecurringBill>> billsTask = _runwayService.GetBillsAsync(cancellationToken);
+                await Task.WhenAll(accountsTask, billsTask).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                IReadOnlyList<Account> accounts = await accountsTask.ConfigureAwait(false);
+                IReadOnlyList<RecurringBill> bills = await billsTask.ConfigureAwait(false);
+                return new RunwayCalculator().Calculate(accounts, bills, scenario, monthlyIncome, projectionMonths, asOfDate);
+            }, ApplyAnalysis).ConfigureAwait(true);
+        }
+
+        private void ApplyAnalysis(RunwayAnalysisResult result)
+        {
             _availableBalanceMetric.Text = result.HasKnownBalance ? result.StartingAvailableBalance.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
             _monthlyBillsMetric.Text = result.MonthlyRequiredExpenses.ToString("C2", CultureInfo.CurrentCulture);
             _monthlyBurnMetric.Text = result.MonthlyNetBurn.ToString("C2", CultureInfo.CurrentCulture);

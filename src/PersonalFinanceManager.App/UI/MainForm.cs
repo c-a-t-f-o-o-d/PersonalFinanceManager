@@ -22,6 +22,8 @@ namespace PersonalFinanceManager.App.UI
         private AppServices _services;
         private string _selectedNavigation = "Setup";
         private bool _changingAppearance;
+        private int _navigationVersion;
+        private int _databaseInitializationVersion;
 
         public MainForm(SettingsService settingsService, FileLogger logger)
         {
@@ -45,7 +47,13 @@ namespace PersonalFinanceManager.App.UI
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+            int navigationVersion = _navigationVersion;
             bool databaseReady = await InitializeDatabaseAsync().ConfigureAwait(true);
+
+            if (IsDisposed || Disposing || navigationVersion != _navigationVersion)
+            {
+                return;
+            }
 
             if (databaseReady)
             {
@@ -58,25 +66,62 @@ namespace PersonalFinanceManager.App.UI
 
         private async Task<bool> InitializeDatabaseAsync()
         {
-            if (!_services.ConnectionFactory.HasConnectionString)
+            AppServices services = _services;
+            int initializationVersion = ++_databaseInitializationVersion;
+
+            if (IsDisposed || Disposing)
             {
+                return false;
+            }
+
+            if (!services.ConnectionFactory.HasConnectionString)
+            {
+                SetDatabaseNavigationEnabled(true);
                 SetStatus("Setup required", "Configure Settings", false);
                 return false;
             }
 
             try
             {
+                SetDatabaseNavigationEnabled(false);
                 SetStatus("Database", "Initializing database...", false);
-                await _services.DatabaseInitializer.InitializeAsync().ConfigureAwait(true);
+                await services.DatabaseInitializer.InitializeAsync().ConfigureAwait(true);
+
+                if (IsDisposed || Disposing || initializationVersion != _databaseInitializationVersion || !ReferenceEquals(services, _services))
+                {
+                    return false;
+                }
+
                 SetStatus("Database ready", "Connected", true);
                 return true;
             }
             catch (Exception ex)
             {
                 _logger.Error("Startup", "Database initialization failed.", ex);
+
+                if (IsDisposed || Disposing || initializationVersion != _databaseInitializationVersion || !ReferenceEquals(services, _services))
+                {
+                    return false;
+                }
+
                 SetStatus("Database unavailable", "Check Settings or Database", false);
                 MessageBox.Show(this, ex.Message, "Database initialization failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return false;
+            }
+            finally
+            {
+                if (!IsDisposed && !Disposing && initializationVersion == _databaseInitializationVersion)
+                {
+                    SetDatabaseNavigationEnabled(true);
+                }
+            }
+        }
+
+        private void SetDatabaseNavigationEnabled(bool enabled)
+        {
+            foreach (KeyValuePair<string, SidebarIconButton> pair in _navButtons)
+            {
+                pair.Value.Enabled = enabled || pair.Key is "Setup" or "Settings" or "Database";
             }
         }
 
@@ -432,7 +477,14 @@ namespace PersonalFinanceManager.App.UI
 
             _settingsService.Save(settings);
             _services = new AppServices(_settingsService.Load(), _logger);
+            int navigationVersion = _navigationVersion;
+            AppServices services = _services;
             bool databaseReady = await InitializeDatabaseAsync().ConfigureAwait(true);
+
+            if (IsDisposed || Disposing || navigationVersion != _navigationVersion || !ReferenceEquals(services, _services))
+            {
+                return;
+            }
 
             if (databaseReady)
             {
@@ -445,6 +497,9 @@ namespace PersonalFinanceManager.App.UI
 
         private async Task LoadDemoDataAsync()
         {
+            int navigationVersion = _navigationVersion;
+            AppServices services = _services;
+
             if (!_services.ConnectionFactory.HasConnectionString)
             {
                 MessageBox.Show(this, "Configure a database connection before loading demo data.", "Setup required", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -453,7 +508,7 @@ namespace PersonalFinanceManager.App.UI
 
             bool databaseReady = await InitializeDatabaseAsync().ConfigureAwait(true);
 
-            if (!databaseReady)
+            if (!databaseReady || IsDisposed || Disposing || navigationVersion != _navigationVersion || !ReferenceEquals(services, _services))
             {
                 return;
             }
@@ -467,13 +522,25 @@ namespace PersonalFinanceManager.App.UI
 
             try
             {
-                Core.Models.DemoDataLoadResult loadResult = await _services.DemoDataService.LoadDemoDataAsync().ConfigureAwait(true);
+                Core.Models.DemoDataLoadResult loadResult = await services.DemoDataService.LoadDemoDataAsync().ConfigureAwait(true);
+
+                if (IsDisposed || Disposing || navigationVersion != _navigationVersion || !ReferenceEquals(services, _services))
+                {
+                    return;
+                }
+
                 MessageBox.Show(this, loadResult.Message, "Demo data loaded", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 ShowAccounts();
             }
             catch (Exception ex)
             {
                 _logger.Error("DemoData", "Demo data load failed.", ex);
+
+                if (IsDisposed || Disposing || navigationVersion != _navigationVersion || !ReferenceEquals(services, _services))
+                {
+                    return;
+                }
+
                 MessageBox.Show(this, ex.Message, "Demo data load failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
@@ -562,6 +629,13 @@ namespace PersonalFinanceManager.App.UI
 
         private void ShowView(string title, string subtitle, Control view)
         {
+            if (IsDisposed || Disposing)
+            {
+                view.Dispose();
+                return;
+            }
+
+            _navigationVersion++;
             _selectedNavigation = title;
             UpdateNavigationState();
             _titleLabel.Text = title;

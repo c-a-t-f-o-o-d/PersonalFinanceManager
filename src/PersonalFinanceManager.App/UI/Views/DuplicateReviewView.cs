@@ -6,7 +6,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class DuplicateReviewView : UserControl, IPageLayoutControl
+    public sealed class DuplicateReviewView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IDuplicateReviewWorkflowService _duplicateReviewWorkflowService;
         private readonly BindingSource _bindingSource = new();
@@ -32,9 +32,15 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await LoadAccountsAsync().ConfigureAwait(true);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
             LoadStatuses();
-            await LoadDuplicatesAsync().ConfigureAwait(true);
+            ApplyAccounts(Array.Empty<Account>());
+            await Task.WhenAll(LoadAccountsAsync(), LoadDuplicatesAsync()).ConfigureAwait(true);
         }
 
         private void InitializeLayout()
@@ -240,14 +246,21 @@ namespace PersonalFinanceManager.App.UI.Views
             _grid.Columns.Add(column);
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            _accounts = await _duplicateReviewWorkflowService.GetAccountsAsync().ConfigureAwait(true);
+            return LoadLatestAsync("accounts", "Loading accounts...", token => _duplicateReviewWorkflowService.GetAccountsAsync(token), ApplyAccounts);
+        }
+
+        private void ApplyAccounts(IReadOnlyList<Account> accounts)
+        {
+            int? selectedAccountId = (_accountFilter.SelectedItem as AccountOption)?.AccountId;
+            _accounts = accounts;
             List<AccountOption> options = new() { new AccountOption(null, "All Accounts") };
             options.AddRange(_accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
-            _accountFilter.DataSource = options;
             _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
             _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            _accountFilter.DataSource = options;
+            _accountFilter.SelectedItem = options.FirstOrDefault(option => option.AccountId == selectedAccountId) ?? options[0];
         }
 
         private void LoadStatuses()
@@ -270,6 +283,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task LoadDuplicatesAsync()
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             DuplicateReviewFilter filter = new()
             {
                 AccountId = (_accountFilter.SelectedItem as AccountOption)?.AccountId,
@@ -278,14 +296,22 @@ namespace PersonalFinanceManager.App.UI.Views
                 MaxRows = decimal.ToInt32(_maxRows.Value)
             };
 
-            IReadOnlyList<DuplicateReviewItem> items = await _duplicateReviewWorkflowService.GetAsync(filter).ConfigureAwait(true);
-            _bindingSource.DataSource = items;
-            ShowSelectedDetails();
+            await LoadLatestAsync("duplicates", "Loading duplicate review...", token => _duplicateReviewWorkflowService.GetAsync(filter, token), items =>
+            {
+                _bindingSource.DataSource = items;
+                ShowSelectedDetails();
+            }).ConfigureAwait(true);
         }
 
         private async Task ScanCrossAccountAsync()
         {
             int created = await _duplicateReviewWorkflowService.ScanCrossAccountDuplicatesAsync().ConfigureAwait(true);
+
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             MessageBox.Show(this, $"Added {created} cross-account duplicate review item(s).", "Duplicate Review", MessageBoxButtons.OK, MessageBoxIcon.Information);
             await LoadDuplicatesAsync().ConfigureAwait(true);
         }
@@ -472,6 +498,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private void ShowSelectedDetails()
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             DuplicateReviewItem? item = GetSelectedItem();
 
             if (item is null)

@@ -8,7 +8,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class SalaryAnalysisView : UserControl, IPageLayoutControl
+    public sealed class SalaryAnalysisView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IAnalysisService _analysisService;
         private readonly SalaryRequirementCalculator _calculator = new();
@@ -47,7 +47,7 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly BindingSource _breakdownSource = new();
         private readonly BindingSource _inputSource = new();
         private readonly BindingSource _monthlySource = new();
-        private IReadOnlyList<Account> _accounts = Array.Empty<Account>();
+        private bool _bindingAccounts;
         private IReadOnlyList<SalarySpendingScopeOption> _scopeOptions = Array.Empty<SalarySpendingScopeOption>();
         private decimal _spousePostedMonthlyNetIncome;
 
@@ -55,6 +55,8 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             _analysisService = analysisService;
             InitializeLayout();
+            BindAccounts(Array.Empty<Account>());
+            SetLastMonthsWithoutRefresh(12);
         }
 
         public int PreferredPageHeight => 1520;
@@ -62,10 +64,13 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await LoadAccountsAsync().ConfigureAwait(true);
-            SetLastMonthsWithoutRefresh(12);
-            await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
-            await RefreshAsync().ConfigureAwait(true);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
+            await Task.WhenAll(LoadAccountsAsync(), RefreshAsync()).ConfigureAwait(true);
         }
 
         private void InitializeLayout()
@@ -102,12 +107,7 @@ namespace PersonalFinanceManager.App.UI.Views
             Button calculate = new() { Text = "Calculate", Dock = DockStyle.Fill, Margin = new Padding(0, 3, 8, 5) };
             UiTheme.StylePrimaryButton(calculate);
 
-            calculate.Click += async (_, _) =>
-            {
-                await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
-                await RefreshAsync().ConfigureAwait(true);
-                _sections.SelectedTab = _resultsTab;
-            };
+            calculate.Click += async (_, _) => await Task.WhenAll(LoadAccountsAsync(), RefreshAsync(showResults: true)).ConfigureAwait(true);
 
             actions.Controls.Add(calculate, 0, 0);
             _periodSummary.Dock = DockStyle.Fill;
@@ -257,7 +257,13 @@ namespace PersonalFinanceManager.App.UI.Views
             _accountFilter.DropDownStyle = ComboBoxStyle.DropDownList;
             _accountFilter.Width = 405;
             row1.Controls.Add(_accountFilter);
-            _accountFilter.SelectedIndexChanged += async (_, _) => await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
+            _accountFilter.SelectedIndexChanged += async (_, _) =>
+            {
+                if (!_bindingAccounts && IsPageActive)
+                {
+                    await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
+                }
+            };
             FlowLayoutPanel row2 = BuildFlowRow(true);
             left.Controls.Add(row2, 0, 1);
             AddFilterLabel(row2, "From", 74);
@@ -726,19 +732,38 @@ namespace PersonalFinanceManager.App.UI.Views
             };
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            _accounts = await _analysisService.GetAccountsAsync().ConfigureAwait(true);
+            return LoadLatestAsync("accounts", "Loading account options...", _analysisService.GetAccountsAsync, BindAccounts);
+        }
+
+        private void BindAccounts(IReadOnlyList<Account> accounts)
+        {
+            int? selectedAccountId = (_accountFilter.SelectedItem as AccountOption)?.AccountId;
             List<AccountOption> options = new() { new AccountOption(null, "All Accounts") };
-            options.AddRange(_accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
-            _accountFilter.DataSource = options;
-            _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
-            _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            options.AddRange(accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
+            _bindingAccounts = true;
+
+            try
+            {
+                _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
+                _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+                _accountFilter.DataSource = options;
+                _accountFilter.SelectedItem = options.FirstOrDefault(option => option.AccountId == selectedAccountId) ?? options[0];
+            }
+            finally
+            {
+                _bindingAccounts = false;
+            }
         }
 
         private async Task LoadSpendingScopeOptionsAsync()
         {
-            HashSet<string> selectedKeys = GetSelectedBuckets().Select(BuildBucketKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             SalarySpendingFilter filter = BuildScopeOptionFilter();
 
             if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
@@ -746,7 +771,14 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            _scopeOptions = await _analysisService.GetSalarySpendingScopeOptionsAsync(filter).ConfigureAwait(true);
+            await LoadLatestAsync("salary-data", "Loading spending buckets...",
+                cancellationToken => _analysisService.GetSalarySpendingScopeOptionsAsync(filter, cancellationToken), ApplyScopeOptions).ConfigureAwait(true);
+        }
+
+        private void ApplyScopeOptions(IReadOnlyList<SalarySpendingScopeOption> options)
+        {
+            HashSet<string> selectedKeys = GetSelectedBuckets().Select(BuildBucketKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _scopeOptions = options;
             _scopeList.SuspendLayout();
             _scopeList.Controls.Clear();
             _scopeCheckBoxes.Clear();
@@ -822,14 +854,12 @@ namespace PersonalFinanceManager.App.UI.Views
             _fromDate.Value = new DateTime(today.Year, 1, 1);
             _toDate.Checked = true;
             _toDate.Value = today;
-            await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
         }
 
         private async Task SetLastMonthsAsync(int monthCount)
         {
             SetLastMonthsWithoutRefresh(monthCount);
-            await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
         }
 
@@ -847,12 +877,16 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             _fromDate.Checked = false;
             _toDate.Checked = false;
-            await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
         }
 
-        private async Task RefreshAsync()
+        private async Task RefreshAsync(bool showResults = false)
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             SalarySpendingFilter spendingFilter = BuildSpendingFilter();
 
             if (spendingFilter.FromDate.HasValue && spendingFilter.ToDate.HasValue && spendingFilter.FromDate > spendingFilter.ToDate)
@@ -861,7 +895,31 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            SalarySpendingAnalysis spending = await _analysisService.GetSalarySpendingAnalysisAsync(spendingFilter).ConfigureAwait(true);
+            SalarySpendingFilter scopeFilter = BuildScopeOptionFilter();
+            SalaryRequirementInput salaryInput = BuildSalaryInput(0M);
+            HashSet<string> selectedKeys = spendingFilter.SelectedSpendingBuckets.Select(BuildBucketKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            await LoadLatestAsync("salary-data", "Calculating salary needs...", async cancellationToken =>
+            {
+                IReadOnlyList<SalarySpendingScopeOption> options = await _analysisService.GetSalarySpendingScopeOptionsAsync(scopeFilter, cancellationToken).ConfigureAwait(true);
+                cancellationToken.ThrowIfCancellationRequested();
+                spendingFilter.SelectedSpendingBuckets = options.Where(option => selectedKeys.Contains(BuildBucketKey(option))).ToArray();
+                SalarySpendingAnalysis spending = await _analysisService.GetSalarySpendingAnalysisAsync(spendingFilter, cancellationToken).ConfigureAwait(true);
+                return (Options: options, Spending: spending);
+            }, result =>
+            {
+                ApplyScopeOptions(result.Options);
+                ApplyAnalysis(result.Spending, salaryInput);
+
+                if (showResults)
+                {
+                    _sections.SelectedTab = _resultsTab;
+                }
+            }).ConfigureAwait(true);
+        }
+
+        private void ApplyAnalysis(SalarySpendingAnalysis spending, SalaryRequirementInput input)
+        {
             IReadOnlyList<IncomeOwnerSummary> incomeSummaries = spending.IncomeOwnerSummaries;
             UpdateIncomeOwnerSummary(incomeSummaries);
 
@@ -886,7 +944,8 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            SalaryRequirementInput input = BuildSalaryInput(spending.TargetMonthlySpending);
+            input.TargetMonthlySpending = spending.TargetMonthlySpending;
+            input.SpouseMonthlyNetIncome = input.SpouseIncomeMode == SpouseIncomeMode.PostedNet ? Math.Max(0M, _spousePostedMonthlyNetIncome) : 0M;
 
             if (input.SpouseIncomeMode == SpouseIncomeMode.PostedNet &&
                 input.SpouseMonthlyNetIncome > 0M &&

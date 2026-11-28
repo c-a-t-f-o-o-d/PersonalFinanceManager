@@ -277,10 +277,21 @@ namespace PersonalFinanceManager.App.UI.Views
 
                 await using var connection = new SqlConnectionFactory(connectionString).CreateConnection();
                 await connection.OpenAsync().ConfigureAwait(true);
+
+                if (IsDisposed || Disposing)
+                {
+                    return;
+                }
+
                 MessageBox.Show(this, $"Connected to {connection.DataSource} / {connection.Database}.", "Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             catch (Exception ex)
             {
+                if (IsDisposed || Disposing)
+                {
+                    throw;
+                }
+
                 MessageBox.Show(this, ex.Message, "Connection failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
@@ -317,6 +328,12 @@ namespace PersonalFinanceManager.App.UI.Views
 
             _settingsService.Save(settings);
             await _settingsSavedAsync().ConfigureAwait(true);
+
+            if (IsDisposed || Disposing)
+            {
+                return;
+            }
+
             MessageBox.Show(this, "Settings saved. Database services were reloaded.", "Settings", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
     }

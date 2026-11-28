@@ -1,4 +1,5 @@
 using System.Drawing.Imaging;
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using PersonalFinanceManager.App.UI.Styling;
 using WinFormsApplication = System.Windows.Forms.Application;
@@ -7,6 +8,20 @@ namespace PersonalFinanceManager.UiTests
 {
     internal static class UiTestSupport
     {
+        public static void PumpUntil(Func<bool> completed, string message, int timeoutMilliseconds = 5000)
+        {
+            Stopwatch stopwatch = Stopwatch.StartNew();
+
+            while (!completed() && stopwatch.ElapsedMilliseconds < timeoutMilliseconds)
+            {
+                WinFormsApplication.DoEvents();
+                Thread.Sleep(1);
+            }
+
+            WinFormsApplication.DoEvents();
+            Assert.IsTrue(completed(), message);
+        }
+
         public static void RunOnUiThread(Action action)
         {
             Exception? failure = null;

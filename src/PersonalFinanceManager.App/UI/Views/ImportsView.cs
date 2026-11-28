@@ -4,7 +4,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class ImportsView : UserControl, IPageLayoutControl
+    public sealed class ImportsView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IImportWorkflowService _importWorkflowService;
         private readonly ComboBox _accounts = new();
@@ -13,6 +13,8 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly BindingSource _bindingSource = new();
         private readonly DataGridView _grid = new();
         private readonly TextBox _summary = new();
+        private readonly List<Control> _operationControls = new();
+        private bool _operationInProgress;
 
         public ImportsView(IImportWorkflowService importWorkflowService)
         {
@@ -25,8 +27,14 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await LoadAccountsAsync().ConfigureAwait(true);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
             LoadProfiles();
+            await LoadAccountsAsync().ConfigureAwait(true);
         }
 
         private void InitializeLayout()
@@ -66,8 +74,9 @@ namespace PersonalFinanceManager.App.UI.Views
             import.Click += async (_, _) => await RunImportActionAsync(ImportAsync).ConfigureAwait(true);
             fileRow.Controls.Add(import);
             Button repairDataFlow = new() { Text = "Repair Data Links", Width = 135 };
-            repairDataFlow.Click += async (_, _) => await RepairDataFlowAsync().ConfigureAwait(true);
+            repairDataFlow.Click += async (_, _) => await RunImportActionAsync(RepairDataFlowAsync).ConfigureAwait(true);
             fileRow.Controls.Add(repairDataFlow);
+            _operationControls.AddRange([_accounts, _profiles, _filePath, browse, preview, import, repairDataFlow]);
             _summary.Dock = DockStyle.Fill;
             _summary.Multiline = true;
             _summary.ReadOnly = true;
@@ -119,12 +128,14 @@ namespace PersonalFinanceManager.App.UI.Views
             _grid.Columns.Add(column);
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            IReadOnlyList<Account> accounts = await _importWorkflowService.GetAccountsAsync().ConfigureAwait(true);
-            _accounts.DataSource = accounts;
-            _accounts.DisplayMember = nameof(Account.DisplayName);
-            _accounts.ValueMember = nameof(Account.AccountId);
+            return LoadLatestAsync("accounts", "Loading accounts...", token => _importWorkflowService.GetAccountsAsync(token), accounts =>
+            {
+                _accounts.DisplayMember = nameof(Account.DisplayName);
+                _accounts.ValueMember = nameof(Account.AccountId);
+                _accounts.DataSource = accounts;
+            });
         }
 
         private void LoadProfiles()
@@ -137,6 +148,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private void Browse()
         {
+            if (!IsPageActive || _operationInProgress)
+            {
+                return;
+            }
+
             ImportProfileOption? profile = _profiles.SelectedItem as ImportProfileOption;
 
             using OpenFileDialog dialog = new()
@@ -145,7 +161,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 Title = "Select import file"
             };
 
-            if (dialog.ShowDialog(this) == DialogResult.OK)
+            if (dialog.ShowDialog(this) == DialogResult.OK && IsPageActive)
             {
                 _filePath.Text = dialog.FileName;
             }
@@ -153,15 +169,44 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task RunImportActionAsync(Func<Task> action)
         {
+            if (!IsPageActive || _operationInProgress)
+            {
+                return;
+            }
+
+            _operationInProgress = true;
+
+            foreach (Control control in _operationControls)
+            {
+                control.Enabled = false;
+            }
+
             try
             {
                 await action().ConfigureAwait(true);
             }
             catch (Exception ex)
             {
+                if (!IsPageActive)
+                {
+                    throw;
+                }
+
                 _bindingSource.DataSource = Array.Empty<ImportedTransaction>();
                 _summary.Text = ex.Message;
-                MessageBox.Show(this, ex.Message, "Import could not be completed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(this, ex.Message, "Statement operation could not be completed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+            finally
+            {
+                _operationInProgress = false;
+
+                if (IsPageActive)
+                {
+                    foreach (Control control in _operationControls)
+                    {
+                        control.Enabled = true;
+                    }
+                }
             }
         }
 
@@ -172,10 +217,13 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            ImportSummary summary = await _importWorkflowService.PreviewAsync(accountId, profileCode, path).ConfigureAwait(true);
-            _bindingSource.DataSource = summary.PreviewRows;
-            _summary.Text = $"Profile: {profileCode}. Preview rows: {summary.ParsedRows}. Parse errors: {summary.ErrorRows}.";
-            AppendParseMessages(summary);
+            await LoadLatestAsync("preview", "Loading statement preview...",
+                token => _importWorkflowService.PreviewAsync(accountId, profileCode, path, token), summary =>
+                {
+                    _bindingSource.DataSource = summary.PreviewRows;
+                    _summary.Text = $"Profile: {profileCode}. Preview rows: {summary.ParsedRows}. Parse errors: {summary.ErrorRows}.";
+                    AppendParseMessages(summary);
+                }).ConfigureAwait(true);
         }
 
         private async Task ImportAsync()
@@ -185,7 +233,12 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            ImportSummary summary = await _importWorkflowService.ImportAsync(accountId, profileCode, path).ConfigureAwait(true);
+            ImportSummary summary = await _importWorkflowService.ImportAsync(accountId, profileCode, path, CancellationToken.None).ConfigureAwait(true);
+
+            if (!IsPageActive)
+            {
+                return;
+            }
 
             _summary.Text = $"Profile: {profileCode}{Environment.NewLine}" +
                 $"Batch: {summary.ImportBatchId}{Environment.NewLine}" +
@@ -207,20 +260,18 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task RepairDataFlowAsync()
         {
-            try
-            {
-                DataFlowRepairSummary summary = await _importWorkflowService.RepairDataFlowAsync().ConfigureAwait(true);
+            DataFlowRepairSummary summary = await _importWorkflowService.RepairDataFlowAsync(CancellationToken.None).ConfigureAwait(true);
 
-                _summary.Text = $"Reconciliation completed.{Environment.NewLine}" +
-                    $"Purchase mirrors: {summary.LinkedFundingRows}{Environment.NewLine}" +
-                    $"Debt/card payment funding links: {summary.CreditCardFundingLinks}{Environment.NewLine}" +
-                    $"Internal transfers: {summary.BankTransferLinks}{Environment.NewLine}" +
-                    "Only unambiguous account-reference matches were linked. Combined funding and uncertain matches require review in Transaction Links.";
-            }
-            catch (Exception ex)
+            if (!IsPageActive)
             {
-                MessageBox.Show(this, ex.Message, "Data-flow repair failed", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
             }
+
+            _summary.Text = $"Reconciliation completed.{Environment.NewLine}" +
+                $"Purchase mirrors: {summary.LinkedFundingRows}{Environment.NewLine}" +
+                $"Debt/card payment funding links: {summary.CreditCardFundingLinks}{Environment.NewLine}" +
+                $"Internal transfers: {summary.BankTransferLinks}{Environment.NewLine}" +
+                "Only unambiguous account-reference matches were linked. Combined funding and uncertain matches require review in Transaction Links.";
         }
 
         private void AppendParseMessages(ImportSummary summary)

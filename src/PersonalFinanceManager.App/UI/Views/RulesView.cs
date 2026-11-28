@@ -6,7 +6,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views;
 
-public sealed class RulesView : UserControl, IPageLayoutControl
+public sealed class RulesView : AsyncPageControl, IPageLayoutControl
 {
     private const string _allValue = "All";
     private const string _trueValue = "Yes";
@@ -23,12 +23,14 @@ public sealed class RulesView : UserControl, IPageLayoutControl
     private readonly ComboBox _matchModeFilter = new();
     private readonly IRuleWorkflowService _ruleService;
     private readonly TextBox _search = new();
+    private readonly List<Button> _mutationButtons = new();
     private readonly ComboBox _transferFilter = new();
     private readonly ComboBox _typeFilter = new();
     private IReadOnlyList<FinancialRule> _allRules = Array.Empty<FinancialRule>();
     private IReadOnlyList<string> _categoryValues = Array.Empty<string>();
     private IReadOnlyList<string> _categoryTypeValues = Array.Empty<string>();
     private bool _loadingFilters;
+    private bool _mutationInProgress;
     private bool _sortAscending = true;
     private string _sortProperty = nameof(FinancialRule.Priority);
 
@@ -43,7 +45,11 @@ public sealed class RulesView : UserControl, IPageLayoutControl
     protected override async void OnLoad(EventArgs e)
     {
         base.OnLoad(e);
-        await LoadRulesAsync().ConfigureAwait(true);
+
+        if (TryBeginInitialLoad())
+        {
+            await LoadRulesAsync().ConfigureAwait(true);
+        }
     }
 
     private void InitializeLayout()
@@ -84,6 +90,7 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         Button reapply = new() { Text = "Reapply Rules to Imports", Width = 190 };
         reapply.Click += async (_, _) => await ReapplyRulesAsync().ConfigureAwait(true);
         commands.Controls.Add(reapply);
+        _mutationButtons.AddRange([add, edit, delete, import, reapply]);
         Button refresh = new() { Text = "Refresh", Width = 90 };
         refresh.Click += async (_, _) => await LoadRulesAsync().ConfigureAwait(true);
         commands.Controls.Add(refresh);
@@ -243,17 +250,25 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         _grid.Columns.Add(column);
     }
 
-    private async Task LoadRulesAsync()
+    private Task LoadRulesAsync()
     {
-        Task<IReadOnlyList<FinancialRule>> rules = _ruleService.GetRulesAsync();
-        Task<IReadOnlyList<string>> categories = _ruleService.GetCategoryValuesAsync();
-        Task<IReadOnlyList<string>> categoryTypes = _ruleService.GetCategoryTypeValuesAsync();
-        await Task.WhenAll(rules, categories, categoryTypes).ConfigureAwait(true);
-        _allRules = await rules.ConfigureAwait(true);
-        _categoryValues = await categories.ConfigureAwait(true);
-        _categoryTypeValues = await categoryTypes.ConfigureAwait(true);
-        LoadFilterValues();
-        ApplyFilters();
+        return LoadLatestAsync("rules", "Loading rules and categories...", async cancellationToken =>
+        {
+            Task<IReadOnlyList<FinancialRule>> rules = _ruleService.GetRulesAsync(cancellationToken);
+            Task<IReadOnlyList<string>> categories = _ruleService.GetCategoryValuesAsync(cancellationToken);
+            Task<IReadOnlyList<string>> categoryTypes = _ruleService.GetCategoryTypeValuesAsync(cancellationToken);
+            await Task.WhenAll(rules, categories, categoryTypes).ConfigureAwait(false);
+
+            return (Rules: await rules.ConfigureAwait(false), Categories: await categories.ConfigureAwait(false),
+                CategoryTypes: await categoryTypes.ConfigureAwait(false));
+        }, result =>
+        {
+            _allRules = result.Rules;
+            _categoryValues = result.Categories;
+            _categoryTypeValues = result.CategoryTypes;
+            LoadFilterValues();
+            ApplyFilters();
+        });
     }
 
     private void LoadFilterValues()
@@ -300,6 +315,11 @@ public sealed class RulesView : UserControl, IPageLayoutControl
 
     private void ApplyFilters()
     {
+        if (!IsPageActive || _loadingFilters)
+        {
+            return;
+        }
+
         IEnumerable<FinancialRule> query = _allRules;
         string search = _search.Text.Trim();
 
@@ -479,20 +499,32 @@ public sealed class RulesView : UserControl, IPageLayoutControl
 
     private async Task AddAsync()
     {
-        using RuleEditForm form = new(new FinancialRule { RuleName = "New Rule", Priority = 100, IsActive = true }, _categoryValues, _categoryTypeValues);
-
-        if (form.ShowDialog(this) != DialogResult.OK)
+        if (!IsPageActive || _mutationInProgress)
         {
             return;
         }
 
-        await _ruleService.SaveRuleAsync(form.Rule).ConfigureAwait(true);
-        await LoadRulesAsync().ConfigureAwait(true);
+        using RuleEditForm form = new(new FinancialRule { RuleName = "New Rule", Priority = 100, IsActive = true }, _categoryValues, _categoryTypeValues);
+
+        if (form.ShowDialog(this) != DialogResult.OK || !IsPageActive)
+        {
+            return;
+        }
+
+        await RunRuleMutationAsync(async () =>
+        {
+            await _ruleService.SaveRuleAsync(form.Rule, CancellationToken.None).ConfigureAwait(true);
+
+            if (IsPageActive)
+            {
+                await LoadRulesAsync().ConfigureAwait(true);
+            }
+        }).ConfigureAwait(true);
     }
 
     private async Task EditAsync()
     {
-        if (_bindingSource.Current is not FinancialRule selected)
+        if (!IsPageActive || _mutationInProgress || _bindingSource.Current is not FinancialRule selected)
         {
             return;
         }
@@ -500,42 +532,61 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         FinancialRule copy = Copy(selected);
         using RuleEditForm form = new(copy, _categoryValues, _categoryTypeValues);
 
-        if (form.ShowDialog(this) != DialogResult.OK)
+        if (form.ShowDialog(this) != DialogResult.OK || !IsPageActive)
         {
             return;
         }
 
-        await _ruleService.SaveRuleAsync(form.Rule).ConfigureAwait(true);
-        await LoadRulesAsync().ConfigureAwait(true);
+        await RunRuleMutationAsync(async () =>
+        {
+            await _ruleService.SaveRuleAsync(form.Rule, CancellationToken.None).ConfigureAwait(true);
+
+            if (IsPageActive)
+            {
+                await LoadRulesAsync().ConfigureAwait(true);
+            }
+        }).ConfigureAwait(true);
     }
 
     private async Task DeleteAsync()
     {
-        if (_bindingSource.Current is not FinancialRule selected)
+        if (!IsPageActive || _mutationInProgress || _bindingSource.Current is not FinancialRule selected)
         {
             return;
         }
 
         DialogResult confirm = MessageBox.Show(this, $"Delete rule '{selected.RuleName}'?", "Delete Rule", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
-        if (confirm != DialogResult.Yes)
+        if (confirm != DialogResult.Yes || !IsPageActive)
         {
             return;
         }
 
-        await _ruleService.DeleteRuleAsync(selected.RuleId).ConfigureAwait(true);
-        await LoadRulesAsync().ConfigureAwait(true);
+        await RunRuleMutationAsync(async () =>
+        {
+            await _ruleService.DeleteRuleAsync(selected.RuleId, CancellationToken.None).ConfigureAwait(true);
+
+            if (IsPageActive)
+            {
+                await LoadRulesAsync().ConfigureAwait(true);
+            }
+        }).ConfigureAwait(true);
     }
 
     private async Task ImportWorkbookAsync()
     {
+        if (!IsPageActive || _mutationInProgress)
+        {
+            return;
+        }
+
         using OpenFileDialog dialog = new()
         {
             Filter = "Excel workbook (*.xlsx)|*.xlsx|All files (*.*)|*.*",
             Title = "Select Rules Workbook"
         };
 
-        if (dialog.ShowDialog(this) != DialogResult.OK)
+        if (dialog.ShowDialog(this) != DialogResult.OK || !IsPageActive)
         {
             return;
         }
@@ -546,7 +597,7 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         {
             MessageBox.Show(this, string.Join(Environment.NewLine, result.Errors.Take(10)), "Rules Import Errors", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
-            if (result.Rows.Count == 0)
+            if (!IsPageActive || result.Rows.Count == 0)
             {
                 return;
             }
@@ -554,27 +605,94 @@ public sealed class RulesView : UserControl, IPageLayoutControl
 
         DialogResult confirm = MessageBox.Show(this, $"This will replace all current rules with {result.Rows.Count} workbook rule(s). Continue?", "Replace Rules", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
 
-        if (confirm != DialogResult.Yes)
+        if (confirm != DialogResult.Yes || !IsPageActive)
         {
             return;
         }
 
-        await _ruleService.ReplaceRulesWithWorkbookRowsAsync(result.Rows).ConfigureAwait(true);
-        await LoadRulesAsync().ConfigureAwait(true);
-        MessageBox.Show(this, $"Imported {result.Rows.Count} rule(s).", "Rules Imported", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        await ImportConfirmedRulesAsync(result.Rows).ConfigureAwait(true);
+    }
+
+    private Task ImportConfirmedRulesAsync(IReadOnlyList<RuleImportRow> rows)
+    {
+        return RunRuleMutationAsync(async () =>
+        {
+            await _ruleService.ReplaceRulesWithWorkbookRowsAsync(rows, CancellationToken.None).ConfigureAwait(true);
+
+            if (!IsPageActive)
+            {
+                return;
+            }
+
+            await LoadRulesAsync().ConfigureAwait(true);
+
+            if (IsPageActive)
+            {
+                MessageBox.Show(this, $"Imported {rows.Count} rule(s).", "Rules Imported", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        });
     }
 
     private async Task ReapplyRulesAsync()
     {
-        DialogResult confirm = MessageBox.Show(this, "Reapply active rules to imported transactions? This refreshes rule-based categories and financial treatment. Manual classifications and reviewed transfer links are preserved.", "Reapply Rules", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
-
-        if (confirm != DialogResult.Yes)
+        if (!IsPageActive || _mutationInProgress)
         {
             return;
         }
 
-        int count = await _ruleService.ReapplyRulesAsync().ConfigureAwait(true);
-        MessageBox.Show(this, $"Reapplied rules to {count} imported transaction(s).", "Rules Reapplied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        DialogResult confirm = MessageBox.Show(this, "Reapply active rules to imported transactions? This refreshes rule-based categories and financial treatment. Manual classifications and reviewed transfer links are preserved.", "Reapply Rules", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+        if (confirm != DialogResult.Yes || !IsPageActive)
+        {
+            return;
+        }
+
+        await ReapplyConfirmedRulesAsync().ConfigureAwait(true);
+    }
+
+    private Task ReapplyConfirmedRulesAsync()
+    {
+        return RunRuleMutationAsync(async () =>
+        {
+            int count = await _ruleService.ReapplyRulesAsync(CancellationToken.None).ConfigureAwait(true);
+
+            if (IsPageActive)
+            {
+                MessageBox.Show(this, $"Reapplied rules to {count} imported transaction(s).", "Rules Reapplied", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        });
+    }
+
+    private async Task RunRuleMutationAsync(Func<Task> operation)
+    {
+        if (!IsPageActive || _mutationInProgress)
+        {
+            return;
+        }
+
+        _mutationInProgress = true;
+
+        foreach (Button button in _mutationButtons)
+        {
+            button.Enabled = false;
+        }
+
+        try
+        {
+            await operation().ConfigureAwait(true);
+        }
+        finally
+        {
+            _mutationInProgress = false;
+
+            if (IsPageActive)
+            {
+                foreach (Button button in _mutationButtons)
+                {
+                    button.Enabled = true;
+                }
+            }
+        }
     }
 
     private static FinancialRule Copy(FinancialRule rule)

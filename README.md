@@ -95,6 +95,12 @@ On first launch, PersonalFinanceManager opens the Setup page if no usable connec
 4. Optionally select **Load Demo Data** if you are using an empty evaluation database.
 5. Explore Accounts, Transactions, Rules, Expense Analysis, Money In/Out, Salary Needed, Bills, Runway, and Data Health.
 
+### Loading and refreshing pages
+
+Transactions and reports load automatically when opened. Each report queries the database independently, so opening Transactions or pressing Apply is not a prerequisite. The Transactions row limit and filters affect that table; reports use their own account, date, and detail filters.
+
+Pages show a loading indicator while queries are pending. Account and category options can finish after the main results appear. Use Apply or Refresh after changing filters, and retry or reopen a page if its data could not be loaded. Navigating away cancels pending reads; confirmed saves, imports, and rule updates continue to completion. Reopen or refresh the relevant page to see those changes.
+
 ### Appearance
 
 Use the sun/moon button beneath **Database** in the sidebar or the appearance option in **Settings** to switch between light and dark modes. The icon shows the current mode: a sun for light mode and a moon for dark mode. Its tooltip identifies the mode it will switch to. The preference is saved for your Windows profile and restored at the next launch. Switching themes retains the open page, report filters, selections, and unsaved edits. Colored navigation icons help distinguish pages while the dark palette uses neutral charcoal and grayscale surfaces. Report charts, grids, edit dialogs, date fields, and calendar popups use the current theme.

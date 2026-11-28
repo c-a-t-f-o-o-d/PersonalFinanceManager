@@ -6,7 +6,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class TransactionLinksView : UserControl, IPageLayoutControl
+    public sealed class TransactionLinksView : AsyncPageControl, IPageLayoutControl
     {
         private readonly BindingSource _bindingSource = new();
         private readonly ComboBox _accountFilter = new();
@@ -30,9 +30,14 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await LoadAccountsAsync().ConfigureAwait(true);
-            await LoadLinkTypesAsync().ConfigureAwait(true);
-            await RefreshAsync().ConfigureAwait(true);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
+            ApplyAccounts(Array.Empty<Account>());
+            await Task.WhenAll(LoadAccountsAsync(), LoadLinkTypesAsync(), RefreshAsync()).ConfigureAwait(true);
         }
 
         private void InitializeLayout()
@@ -246,20 +251,31 @@ namespace PersonalFinanceManager.App.UI.Views
             return column;
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            _accounts = await _transactionLinkService.GetAccountsAsync().ConfigureAwait(true);
-            List<AccountOption> options = new() { new AccountOption(null, "All Accounts") };
-            options.AddRange(_accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
-            _accountFilter.DataSource = options;
-            _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
-            _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            return LoadLatestAsync("accounts", "Loading accounts...", token => _transactionLinkService.GetAccountsAsync(token), ApplyAccounts);
         }
 
-        private async Task LoadLinkTypesAsync()
+        private void ApplyAccounts(IReadOnlyList<Account> accounts)
+        {
+            int? selectedAccountId = (_accountFilter.SelectedItem as AccountOption)?.AccountId;
+            _accounts = accounts;
+            List<AccountOption> options = new() { new AccountOption(null, "All Accounts") };
+            options.AddRange(_accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
+            _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
+            _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            _accountFilter.DataSource = options;
+            _accountFilter.SelectedItem = options.FirstOrDefault(option => option.AccountId == selectedAccountId) ?? options[0];
+        }
+
+        private Task LoadLinkTypesAsync()
+        {
+            return LoadLatestAsync("link-types", "Loading link types...", token => _transactionLinkService.GetLinkTypesAsync(token), ApplyLinkTypes);
+        }
+
+        private void ApplyLinkTypes(IReadOnlyList<string> linkTypes)
         {
             string current = _linkTypeFilter.Text;
-            IReadOnlyList<string> linkTypes = await _transactionLinkService.GetLinkTypesAsync().ConfigureAwait(true);
             _linkTypeFilter.Items.Clear();
             _linkTypeFilter.Items.Add(string.Empty);
 
@@ -286,6 +302,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task RefreshAsync()
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             AccountOption? account = _accountFilter.SelectedItem as AccountOption;
 
             TransactionLinkFilter filter = new()
@@ -296,9 +317,11 @@ namespace PersonalFinanceManager.App.UI.Views
                 MaxRows = decimal.ToInt32(_maxRows.Value)
             };
 
-            IReadOnlyList<TransactionLinkRecord> links = await _transactionLinkService.GetLinksAsync(filter).ConfigureAwait(true);
-            _bindingSource.DataSource = links;
-            UpdateDetails();
+            await LoadLatestAsync("links", "Loading transaction links...", token => _transactionLinkService.GetLinksAsync(filter, token), links =>
+            {
+                _bindingSource.DataSource = links;
+                UpdateDetails();
+            }).ConfigureAwait(true);
         }
 
         private async Task AddAsync()
@@ -373,6 +396,12 @@ namespace PersonalFinanceManager.App.UI.Views
         private async Task RepairDataLinksAsync()
         {
             DataFlowRepairSummary summary = await _transactionLinkService.RepairDataFlowAsync().ConfigureAwait(true);
+
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             MessageBox.Show(this, $"Reconciliation complete. Purchase mirrors: {summary.LinkedFundingRows}. Debt/card payment funding links: {summary.CreditCardFundingLinks}. Internal transfers: {summary.BankTransferLinks}. Only unambiguous explicit account references are linked automatically. Use Add Link for combined funding, split payments, or missing references.", "Transaction Links", MessageBoxButtons.OK, MessageBoxIcon.Information);
             await LoadLinkTypesAsync().ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
@@ -390,6 +419,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private void UpdateDetails()
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             if (_bindingSource.Current is not TransactionLinkRecord link)
             {
                 _sourceDetails.Clear();
