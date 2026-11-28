@@ -11,6 +11,12 @@ namespace PersonalFinanceManager.UiTests
     {
         private const uint _getMonthCalendar = 0x1008;
         private const uint _closeMonthCalendar = 0x100D;
+        private const uint _getMinimumCalendarRectangle = 0x1009;
+        private const uint _getCalendarColor = 0x100B;
+        private const uint _hitTestCalendar = 0x100E;
+        private const uint _getMaximumTodayWidth = 0x1015;
+        private const uint _calendarWeekday = 0x00020002;
+        private const uint _calendarTodayLink = 0x00030000;
 
         public TestContext TestContext { get; set; } = null!;
 
@@ -65,6 +71,7 @@ namespace PersonalFinanceManager.UiTests
                     {
                         SaveImage(popup, "date-calendar-dark-" + opening, TestContext);
                         AssertDarkSurface(popup);
+                        AssertCalendarLayoutAndText(calendar, popup, dark: true);
                     }
 
                     UiTheme.SetDarkMode(false);
@@ -74,10 +81,18 @@ namespace PersonalFinanceManager.UiTests
                     {
                         SaveImage(popup, "date-calendar-light", TestContext);
                         AssertLightSurface(popup);
+                        AssertCalendarLayoutAndText(calendar, popup, dark: false);
                     }
 
                     UiTheme.SetDarkMode(true);
                     WinFormsApplication.DoEvents();
+                    using (Bitmap popup = RenderWindow(calendar))
+                    {
+                        SaveImage(popup, "date-calendar-returned-dark", TestContext);
+                        AssertDarkSurface(popup);
+                        AssertCalendarLayoutAndText(calendar, popup, dark: true);
+                    }
+
                     _ = SendMessage(picker.Handle, _closeMonthCalendar, IntPtr.Zero, IntPtr.Zero);
                     WinFormsApplication.DoEvents();
                     Assert.AreEqual(IntPtr.Zero, SendMessage(picker.Handle, _getMonthCalendar, IntPtr.Zero, IntPtr.Zero));
@@ -129,6 +144,92 @@ namespace PersonalFinanceManager.UiTests
 
                 host.Close();
             });
+        }
+
+        private static void AssertCalendarLayoutAndText(IntPtr calendar, Bitmap image, bool dark)
+        {
+            NativeRectangle minimum = default;
+            Assert.AreNotEqual(IntPtr.Zero, SendMessage(calendar, _getMinimumCalendarRectangle, IntPtr.Zero, ref minimum));
+            Assert.IsGreaterThanOrEqualTo(minimum.Right, image.Width, "The popup must fit the calendar's current native width.");
+            Assert.IsGreaterThanOrEqualTo(minimum.Bottom, image.Height, "The popup must fit the full month and Today footer after its visual styles change.");
+            int todayWidth = (int)SendMessage(calendar, _getMaximumTodayWidth, IntPtr.Zero, IntPtr.Zero);
+            Assert.IsGreaterThanOrEqualTo(todayWidth, image.Width, "The localized Today label must fit within the popup.");
+
+            if (dark)
+            {
+                Color weekday = ColorTranslator.FromWin32((int)SendMessage(calendar, _getCalendarColor, new IntPtr(2), IntPtr.Zero));
+                Color title = ColorTranslator.FromWin32((int)SendMessage(calendar, _getCalendarColor, new IntPtr(3), IntPtr.Zero));
+                Color month = ColorTranslator.FromWin32((int)SendMessage(calendar, _getCalendarColor, new IntPtr(4), IntPtr.Zero));
+                Assert.IsGreaterThanOrEqualTo(4.5D, Contrast(weekday, month), "Classic weekday text shares the title background color and must contrast with the month background.");
+                Assert.IsGreaterThanOrEqualTo(4.5D, Contrast(title, weekday), "The month title must remain readable on its title background.");
+            }
+
+            Color background = dark ? UiTheme.InputBackground : SystemColors.Window;
+            AssertCalendarPartHasText(calendar, image, _calendarWeekday, background, "weekday headings");
+            AssertCalendarPartHasText(calendar, image, _calendarTodayLink, background, "Today footer");
+        }
+
+        private static void AssertCalendarPartHasText(IntPtr calendar, Bitmap image, uint part, Color background, string description)
+        {
+            Assert.IsTrue(GetClientRect(calendar, out NativeRectangle client));
+            Assert.IsTrue(GetWindowRect(calendar, out NativeRectangle window));
+            NativePoint origin = default;
+            Assert.IsTrue(ClientToScreen(calendar, ref origin));
+            int top = -1;
+            int bottom = -1;
+
+            for (int y = client.Top; y < client.Bottom; y++)
+            {
+                CalendarHitTestInfo hit = new()
+                {
+                    Size = (uint)Marshal.SizeOf<CalendarHitTestInfo>(),
+                    Point = new NativePoint { X = client.Right / 2, Y = y }
+                };
+                _ = SendMessage(calendar, _hitTestCalendar, IntPtr.Zero, ref hit);
+
+                if (hit.Hit == part)
+                {
+                    top = top < 0 ? y : top;
+                    bottom = y + 1;
+                }
+            }
+
+            Assert.IsGreaterThanOrEqualTo(0, top, $"The native calendar must expose its {description} within the popup.");
+            Assert.IsGreaterThan(6, bottom - top, $"The native {description} must not be clipped to a partial text row.");
+            int glyphPixels = 0;
+
+            for (int y = top + 2; y < bottom - 2; y++)
+            {
+                for (int x = client.Right / 2; x < client.Right - 3; x++)
+                {
+                    Color pixel = image.GetPixel(x + origin.X - window.Left, y + origin.Y - window.Top);
+
+                    if (Contrast(pixel, background) >= 4.5D)
+                    {
+                        glyphPixels++;
+                    }
+                }
+            }
+
+            Assert.IsGreaterThan(12, glyphPixels, $"The rendered {description} must contain readable text on its background.");
+        }
+
+        private static double Contrast(Color first, Color second)
+        {
+            static double Luminance(Color color)
+            {
+                static double Linear(byte channel)
+                {
+                    double value = channel / 255D;
+                    return value <= 0.04045D ? value / 12.92D : Math.Pow((value + 0.055D) / 1.055D, 2.4D);
+                }
+
+                return (0.2126D * Linear(color.R)) + (0.7152D * Linear(color.G)) + (0.0722D * Linear(color.B));
+            }
+
+            double firstLuminance = Luminance(first);
+            double secondLuminance = Luminance(second);
+            return (Math.Max(firstLuminance, secondLuminance) + 0.05D) / (Math.Min(firstLuminance, secondLuminance) + 0.05D);
         }
 
         private static Bitmap RenderWindow(IntPtr window)
@@ -218,6 +319,20 @@ namespace PersonalFinanceManager.UiTests
         [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
         private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
+        private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, ref NativeRectangle rectangle);
+
+        [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
+        private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, ref CalendarHitTestInfo hitTest);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetClientRect(IntPtr window, out NativeRectangle rectangle);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ClientToScreen(IntPtr window, ref NativePoint point);
+
         [DllImport("user32.dll", ExactSpelling = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetWindowRect(IntPtr window, out NativeRectangle rectangle);
@@ -232,6 +347,39 @@ namespace PersonalFinanceManager.UiTests
 
         [DllImport("uxtheme.dll", ExactSpelling = true)]
         private static extern IntPtr GetWindowTheme(IntPtr window);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativePoint
+        {
+            public int X;
+            public int Y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct NativeSystemTime
+        {
+            public ushort Year;
+            public ushort Month;
+            public ushort DayOfWeek;
+            public ushort Day;
+            public ushort Hour;
+            public ushort Minute;
+            public ushort Second;
+            public ushort Milliseconds;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CalendarHitTestInfo
+        {
+            public uint Size;
+            public NativePoint Point;
+            public uint Hit;
+            public NativeSystemTime Date;
+            public NativeRectangle Bounds;
+            public int Offset;
+            public int Row;
+            public int Column;
+        }
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeRectangle

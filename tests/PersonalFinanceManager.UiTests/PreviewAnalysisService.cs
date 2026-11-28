@@ -4,7 +4,7 @@ using PersonalFinanceManager.Core.Reporting;
 
 namespace PersonalFinanceManager.UiTests
 {
-    internal sealed class PreviewAnalysisService : IAnalysisService
+    internal sealed class PreviewAnalysisService : IAnalysisService, IRunwayWorkflowService
     {
         private readonly FinancialReportCalculator _calculator;
         public int AdditionalScopeCount { get; init; }
@@ -13,7 +13,9 @@ namespace PersonalFinanceManager.UiTests
             AccountId = 1,
             AccountNickname = "Household checking",
             AccountType = "Checking",
-            Institution = "Example Financial"
+            Institution = "Example Financial",
+            AvailableBalance = 10000M,
+            BalanceAsOfDate = DateOnly.FromDateTime(DateTime.Today)
         };
 
         public PreviewAnalysisService()
@@ -52,6 +54,20 @@ namespace PersonalFinanceManager.UiTests
         public Task<IReadOnlyList<Account>> GetAccountsAsync(CancellationToken cancellationToken = default)
         {
             return Task.FromResult<IReadOnlyList<Account>>([_account]);
+        }
+
+        public Task<IReadOnlyList<RecurringBill>> GetBillsAsync(CancellationToken cancellationToken = default)
+        {
+            return Task.FromResult<IReadOnlyList<RecurringBill>>([new RecurringBill
+            {
+                RecurringBillId = 1,
+                AccountId = _account.AccountId,
+                BillName = "Home mortgage",
+                Payee = "Example Home Servicer",
+                TypicalAmount = 1800M,
+                NextDueDate = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(1),
+                DueDay = 1
+            }]);
         }
 
         public Task<ExpenseReportResult> GetExpenseReportAsync(ExpenseReportFilter filter, CancellationToken cancellationToken = default)

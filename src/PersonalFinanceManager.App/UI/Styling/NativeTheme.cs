@@ -7,6 +7,8 @@ namespace PersonalFinanceManager.App.UI.Styling
         private const int _immersiveDarkMode = 20;
         private const uint _getMonthCalendar = 0x1008;
         private const uint _setMonthCalendarColor = 0x100A;
+        private const uint _getMinimumCalendarRectangle = 0x1009;
+        private const uint _getMaximumTodayWidth = 0x1015;
 
         public static void Apply(Control control)
         {
@@ -70,11 +72,48 @@ namespace PersonalFinanceManager.App.UI.Styling
                 SetVisualStyles(calendar, !dark);
                 SetCalendarColor(calendar, 0, UiTheme.InputBackground);
                 SetCalendarColor(calendar, 1, UiTheme.TextPrimary);
-                SetCalendarColor(calendar, 2, SystemInformation.HighContrast ? SystemColors.Highlight : UiTheme.GridSelected);
-                SetCalendarColor(calendar, 3, SystemInformation.HighContrast ? SystemColors.HighlightText : UiTheme.TextPrimary);
+                // The classic calendar also uses its title background color for weekday text.
+                Color titleBackground = SystemInformation.HighContrast ? SystemColors.Highlight : dark ? UiTheme.TextMuted : UiTheme.GridSelected;
+                Color titleForeground = SystemInformation.HighContrast ? SystemColors.HighlightText : dark ? UiTheme.InputBackground : UiTheme.TextPrimary;
+                SetCalendarColor(calendar, 2, titleBackground);
+                SetCalendarColor(calendar, 3, titleForeground);
                 SetCalendarColor(calendar, 4, UiTheme.InputBackground);
                 SetCalendarColor(calendar, 5, UiTheme.TextMuted);
+                FitCalendar(picker, calendar);
             }
+        }
+
+        private static void FitCalendar(DateTimePicker picker, IntPtr calendar)
+        {
+            NativeRectangle minimum = default;
+
+            if (SendMessage(calendar, _getMinimumCalendarRectangle, IntPtr.Zero, ref minimum) == IntPtr.Zero || !GetWindowRect(calendar, out NativeRectangle bounds))
+            {
+                return;
+            }
+
+            // Disabling visual styles changes the native calendar metrics without resizing its popup.
+            int todayWidth = (int)SendMessage(calendar, _getMaximumTodayWidth, IntPtr.Zero, IntPtr.Zero);
+            int width = Math.Max(bounds.Right - bounds.Left, Math.Max(minimum.Right, todayWidth));
+            int height = Math.Max(bounds.Bottom - bounds.Top, minimum.Bottom);
+
+            if (width == bounds.Right - bounds.Left && height == bounds.Bottom - bounds.Top)
+            {
+                return;
+            }
+
+            int left = picker.DropDownAlign == LeftRightAlignment.Right ? bounds.Right - width : bounds.Left;
+            int top = bounds.Top;
+
+            if (GetWindowRect(picker.Handle, out NativeRectangle pickerBounds) && bounds.Bottom <= pickerBounds.Top)
+            {
+                top = bounds.Bottom - height;
+            }
+
+            Rectangle workingArea = Screen.FromHandle(picker.Handle).WorkingArea;
+            left = Math.Clamp(left, workingArea.Left, Math.Max(workingArea.Left, workingArea.Right - width));
+            top = Math.Clamp(top, workingArea.Top, Math.Max(workingArea.Top, workingArea.Bottom - height));
+            _ = SetWindowPos(calendar, IntPtr.Zero, left, top, width, height, 0x0004 | 0x0010);
         }
 
         private static void SetCalendarColor(IntPtr calendar, int portion, Color color)
@@ -98,6 +137,20 @@ namespace PersonalFinanceManager.App.UI.Styling
         [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
         [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
         private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", EntryPoint = "SendMessageW", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        private static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wParam, ref NativeRectangle rectangle);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetWindowRect(IntPtr window, out NativeRectangle rectangle);
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int left, int top, int width, int height, uint flags);
 
         [StructLayout(LayoutKind.Sequential)]
         private struct NativeRectangle

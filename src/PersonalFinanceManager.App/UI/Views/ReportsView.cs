@@ -98,6 +98,7 @@ namespace PersonalFinanceManager.App.UI.Views
             metricRow.Controls.Add(BuildMetricCard("Avg / Txn", _averageTransactionMetric), 3, 0);
             metricRow.Controls.Add(BuildMetricCard("Top Category", _largestCategoryMetric), 4, 0);
             metricRow.Controls.Add(BuildMetricCard("Top Month", _largestMonthMetric), 5, 0);
+            PageLayout.ResponsiveMetrics(root, 1, metricRow, 3, 1200);
 
             TableLayoutPanel chartRow = new()
             {
@@ -325,7 +326,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
             parent.Controls.Add(tabs);
             TabPage overviewTab = new("Charts");
-            overviewTab.Controls.Add(overview);
+            PageLayout.ScrollableChart(overviewTab, overview, 360);
             tabs.TabPages.Add(overviewTab);
 
             TabPage summaryTab = new("Expense Summary");

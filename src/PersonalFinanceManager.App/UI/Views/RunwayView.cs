@@ -84,6 +84,7 @@ namespace PersonalFinanceManager.App.UI.Views
             metricRow.Controls.Add(BuildMetricCard("Required Bills / Month", _monthlyBillsMetric), 1, 0);
             metricRow.Controls.Add(BuildMetricCard("Net Monthly Burn", _monthlyBurnMetric), 2, 0);
             metricRow.Controls.Add(BuildMetricCard("Estimated Depletion", _depletionMetric), 3, 0);
+            PageLayout.ResponsiveMetrics(root, 1, metricRow, 2, 850);
 
             CardPanel chartCard = new()
             {
@@ -200,7 +201,7 @@ namespace PersonalFinanceManager.App.UI.Views
             TabControl tabs = new() { Dock = DockStyle.Fill };
             parent.Controls.Add(tabs);
             TabPage overviewTab = new("Chart");
-            overviewTab.Controls.Add(overview);
+            PageLayout.ScrollableChart(overviewTab, overview, 320);
             tabs.TabPages.Add(overviewTab);
 
             TabPage projectionTab = new("Projection");

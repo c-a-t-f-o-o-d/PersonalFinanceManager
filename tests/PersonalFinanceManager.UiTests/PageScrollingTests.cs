@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.InteropServices;
 using PersonalFinanceManager.App.UI;
 using PersonalFinanceManager.App.UI.Controls;
@@ -68,28 +69,52 @@ namespace PersonalFinanceManager.UiTests
         }
 
         [TestMethod]
-        public void ReportTabsDoNotCreateNestedPageAndTableScrolling()
+        [DataRow("expenses")]
+        [DataRow("cash-flow")]
+        [DataRow("runway")]
+        public void ReportTabsDoNotCreateNestedPageAndTableScrolling(string reportName)
         {
             RunOnUiThread(() =>
             {
                 UiTheme.SetDarkMode(true);
-                using ThemedForm host = new() { Text = "Expense analysis", ClientSize = new Size(1100, 680) };
-                ReportsView report = new(new PreviewAnalysisService());
+                using ThemedForm host = new() { Text = reportName, ClientSize = new Size(1100, 680) };
+                PreviewAnalysisService service = new();
+                Control report = reportName switch
+                {
+                    "expenses" => new ReportsView(service),
+                    "cash-flow" => new MoneyInOutView(service),
+                    "runway" => new RunwayView(service),
+                    _ => throw new ArgumentOutOfRangeException(nameof(reportName))
+                };
                 PageHost page = new(report);
                 host.Controls.Add(page);
                 host.Show();
                 WinFormsApplication.DoEvents();
                 Assert.IsFalse(page.VerticalScroll.Visible);
 
-                foreach (TabControl tabs in Descendants(report).OfType<TabControl>())
+                foreach (Size size in new[] { new Size(1100, 680), new Size(750, 500) })
                 {
-                    for (int index = 0; index < tabs.TabPages.Count; index++)
+                    host.ClientSize = size;
+                    WinFormsApplication.DoEvents();
+
+                    foreach (Label value in Descendants(report).OfType<Label>().Where(label => label.AutoEllipsis && label.Font.Size >= 12F &&
+                        decimal.TryParse(label.Text, NumberStyles.Currency, CultureInfo.CurrentCulture, out _)))
                     {
-                        tabs.SelectedIndex = index;
-                        WinFormsApplication.DoEvents();
-                        Assert.IsFalse(page.VerticalScroll.Visible);
-                        Assert.IsTrue(VerticalScrollOwners(page).Count() <= 1, $"Report tab '{tabs.SelectedTab!.Text}' has competing vertical scrollbars.");
-                        Capture(host, "expense-tab-" + index, TestContext);
+                        int requiredWidth = TextRenderer.MeasureText(value.Text, value.Font, Size.Empty, TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix).Width;
+                        Assert.IsTrue(value.ClientSize.Width >= requiredWidth, $"Report metric '{value.Text}' is clipped at {size}.");
+                    }
+
+                    foreach (TabControl tabs in Descendants(report).OfType<TabControl>())
+                    {
+                        for (int index = 0; index < tabs.TabPages.Count; index++)
+                        {
+                            tabs.SelectedIndex = index;
+                            WinFormsApplication.DoEvents();
+                            Assert.IsFalse(page.VerticalScroll.Visible);
+                            Assert.IsFalse(page.HorizontalScroll.Visible);
+                            Assert.IsTrue(VerticalScrollOwners(page).Count() <= 1, $"Report tab '{tabs.SelectedTab!.Text}' has competing vertical scrollbars at {size}.");
+                            Capture(host, reportName + "-tab-" + index + "-" + size.Width, TestContext);
+                        }
                     }
                 }
 

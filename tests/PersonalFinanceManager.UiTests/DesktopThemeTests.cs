@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using PersonalFinanceManager.App.UI;
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.App.UI.Styling;
 using PersonalFinanceManager.App.UI.Views;
 using PersonalFinanceManager.Core.Models;
@@ -263,7 +264,31 @@ namespace PersonalFinanceManager.UiTests
                     SettingsService settings = new(configurationDirectory);
                     settings.Save(new AppSettings { UseDarkMode = dark });
                     using MainForm main = new(settings, new FileLogger());
-                    ShowAndCapture(main, "setup", dark);
+                    main.Show();
+                    WinFormsApplication.DoEvents();
+                    Capture(main, "setup" + (dark ? "-dark" : "-light"));
+                    main.Size = main.MinimumSize;
+                    WinFormsApplication.DoEvents();
+                    Capture(main, "setup-minimum" + (dark ? "-dark" : "-light"));
+                    PageHost setupHost = Descendants(main).OfType<PageHost>().Single();
+                    Assert.IsFalse(setupHost.HorizontalScroll.Visible);
+                    SetupView setup = Descendants(main).OfType<SetupView>().Single();
+
+                    foreach (Label label in Descendants(setup).OfType<Label>().Where(label => !label.AutoEllipsis && label.Text.Length > 20))
+                    {
+                        Size required = label.GetPreferredSize(new Size(label.Width, 0));
+                        Assert.IsTrue(label.Height >= required.Height, $"Setup text is clipped at minimum width: {label.Text}");
+                    }
+
+                    CardPanel lastCard = setup.Controls.OfType<CardPanel>().OrderBy(card => card.Bottom).Last();
+                    setupHost.ScrollControlIntoView(lastCard);
+                    WinFormsApplication.DoEvents();
+                    Rectangle lastCardBounds = setupHost.RectangleToClient(lastCard.RectangleToScreen(lastCard.ClientRectangle));
+                    Assert.IsTrue(setupHost.ClientRectangle.Contains(lastCardBounds), "The setup scrollbar must reach the final card.");
+                    Assert.IsFalse(setupHost.HorizontalScroll.Visible);
+                    Assert.IsFalse(setup.VerticalScroll.Visible);
+                    Capture(main, "setup-minimum-bottom" + (dark ? "-dark" : "-light"));
+                    main.Close();
 
                     Account account = new()
                     {

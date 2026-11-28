@@ -42,9 +42,12 @@ namespace PersonalFinanceManager.App.UI.Controls
 
                 try
                 {
-                    int preferredHeight = HostedView is IPageLayoutControl layout ? HostedView.LogicalToDeviceUnits(layout.PreferredPageHeight) : ClientSize.Height;
+                    int width = Math.Max(0, ClientSize.Width);
+                    HostedView.Width = width;
+                    int minimumHeight = HostedView is IPageLayoutControl layout ? HostedView.LogicalToDeviceUnits(layout.PreferredPageHeight) : 0;
+                    int preferredHeight = Math.Max(minimumHeight, HostedView.GetPreferredSize(new Size(width, 0)).Height);
                     AutoScrollMinSize = new Size(0, preferredHeight);
-                    HostedView.Size = new Size(Math.Max(0, ClientSize.Width), Math.Max(ClientSize.Height, preferredHeight));
+                    HostedView.Size = new Size(width, Math.Max(ClientSize.Height, preferredHeight));
                     HostedView.Location = AutoScrollPosition;
                 }
                 finally

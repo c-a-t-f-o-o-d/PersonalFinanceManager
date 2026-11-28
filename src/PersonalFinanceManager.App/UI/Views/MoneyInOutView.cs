@@ -87,6 +87,7 @@ namespace PersonalFinanceManager.App.UI.Views
             metricRow.Controls.Add(BuildMetricCard("Money Out", _moneyOutMetric), 1, 0);
             metricRow.Controls.Add(BuildMetricCard("Net Cash Flow", _netMetric), 2, 0);
             metricRow.Controls.Add(BuildMetricCard("Avg Net / Month", _averageNetMetric), 3, 0);
+            PageLayout.ResponsiveMetrics(root, 1, metricRow, 2, 850);
 
             CardPanel chartCard = new()
             {
@@ -217,7 +218,7 @@ namespace PersonalFinanceManager.App.UI.Views
             TabControl tabs = new() { Dock = DockStyle.Fill };
             parent.Controls.Add(tabs);
             TabPage overviewTab = new("Chart");
-            overviewTab.Controls.Add(overview);
+            PageLayout.ScrollableChart(overviewTab, overview, 320);
             tabs.TabPages.Add(overviewTab);
 
             TabPage monthlyTab = new("Monthly Summary");
