@@ -51,7 +51,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 $"{PersonalFinanceManagerIdentity.ProductName} needs a SQL Server database connection before account, import, reporting, and backup features are available. The connection string is stored only in your local Windows profile and is protected with DPAPI.", 18, 56, 1040, 44));
 
             Label status = CreateBodyLabel(BuildStatusText(), 18, 98, 1040, 24);
-            status.ForeColor = _settings.HasUsableConnectionString() ? UiTheme.Success : Color.FromArgb(220, 38, 38);
+            UiTheme.SetTextRole(status, _settings.HasUsableConnectionString() ? "SuccessText" : "DangerText");
             hero.Controls.Add(status);
 
             root.Controls.Add(CreateConnectionCard(

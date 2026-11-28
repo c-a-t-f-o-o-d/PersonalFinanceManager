@@ -9,8 +9,9 @@ namespace PersonalFinanceManager.App.UI.Views;
 public sealed class RulesView : UserControl, IPageLayoutControl
 {
     private const string _allValue = "All";
-    private const string _trueValue = "True";
-    private const string _falseValue = "False";
+    private const string _trueValue = "Yes";
+    private const string _falseValue = "No";
+    private const string _keepExistingValue = "Keep existing";
     private readonly BindingSource _bindingSource = new();
     private readonly ComboBox _activeFilter = new();
     private readonly ComboBox _categoryFilter = new();
@@ -25,6 +26,8 @@ public sealed class RulesView : UserControl, IPageLayoutControl
     private readonly ComboBox _transferFilter = new();
     private readonly ComboBox _typeFilter = new();
     private IReadOnlyList<FinancialRule> _allRules = Array.Empty<FinancialRule>();
+    private IReadOnlyList<string> _categoryValues = Array.Empty<string>();
+    private IReadOnlyList<string> _categoryTypeValues = Array.Empty<string>();
     private bool _loadingFilters;
     private bool _sortAscending = true;
     private string _sortProperty = nameof(FinancialRule.Priority);
@@ -48,11 +51,12 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         TableLayoutPanel root = new()
         {
             Dock = DockStyle.Fill,
-            RowCount = 3,
+            RowCount = 4,
             Padding = new Padding(0)
         };
 
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         root.RowStyles.Add(new RowStyle(SizeType.Absolute, 108));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Controls.Add(root);
@@ -84,13 +88,31 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         refresh.Click += async (_, _) => await LoadRulesAsync().ConfigureAwait(true);
         commands.Controls.Add(refresh);
 
+        CardPanel guidanceCard = new()
+        {
+            Dock = DockStyle.Fill,
+            Padding = new Padding(16, 12, 16, 12)
+        };
+
+        Label guidance = new()
+        {
+            Dock = DockStyle.Fill,
+            Text = "Category describes a purpose, such as Groceries; Category Type is a reporting group, such as Food & Drink. You can choose suggestions or enter your own values.\r\n"
+                + "Income and Transfer are separate financial decisions. Keep existing leaves those decisions unchanged.\r\n"
+                + "Inactive starter templates are examples: edit their descriptions and activate after review. Lower priority numbers win; only the first matching active rule applies.",
+            Tag = "SecondaryText"
+        };
+
+        guidanceCard.Controls.Add(guidance);
+        root.Controls.Add(guidanceCard, 0, 1);
+
         CardPanel filterCard = new()
         {
             Dock = DockStyle.Fill,
             Padding = new Padding(14, 10, 14, 10)
         };
 
-        root.Controls.Add(filterCard, 0, 1);
+        root.Controls.Add(filterCard, 0, 2);
 
         TableLayoutPanel filterLayout = new()
         {
@@ -137,8 +159,8 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         filterRow2.Controls.Add(MakeLabel("Income Owner", 104));
         ConfigureDropDownFilter(_incomeOwnerFilter, 128);
         filterRow2.Controls.Add(_incomeOwnerFilter);
-        AddTriStateFilter(filterRow2, "Income", _incomeFilter);
-        AddTriStateFilter(filterRow2, "Transfer", _transferFilter);
+        AddTriStateFilter(filterRow2, "Income", _incomeFilter, includeKeepExisting: true);
+        AddTriStateFilter(filterRow2, "Transfer", _transferFilter, includeKeepExisting: true);
         AddTriStateFilter(filterRow2, "Active", _activeFilter);
         Button clear = new() { Text = "Clear Filters", Width = 115 };
         clear.Click += (_, _) => ClearFilters();
@@ -159,16 +181,17 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         _grid.CellDoubleClick += async (_, _) => await EditAsync().ConfigureAwait(true);
         AddColumn(nameof(FinancialRule.Priority), "Priority", 70);
         AddColumn(nameof(FinancialRule.RuleName), "Rule", 220);
+        AddColumn(nameof(FinancialRule.StarterRuleCode), "Source", 85);
         AddColumn(nameof(FinancialRule.MatchDescription), "Description", 340);
         AddColumn(nameof(FinancialRule.DescriptionMatchMode), "Description Matching", 150);
         AddColumn(nameof(FinancialRule.MatchType), "Type", 110);
         AddColumn(nameof(FinancialRule.Category), "Category", 160);
         AddColumn(nameof(FinancialRule.SpendingClass), "Category Type", 150);
         AddColumn(nameof(FinancialRule.IncomeOwner), "Income Owner", 110);
-        AddColumn(nameof(FinancialRule.IsIncome), "Income", 80);
-        AddColumn(nameof(FinancialRule.IsTransfer), "Transfer", 80);
+        AddColumn(nameof(FinancialRule.IsIncome), "Income", 125);
+        AddColumn(nameof(FinancialRule.IsTransfer), "Transfer", 125);
         AddColumn(nameof(FinancialRule.IsActive), "Active", 80);
-        root.Controls.Add(_grid, 0, 2);
+        root.Controls.Add(_grid, 0, 3);
         UiTheme.ApplyTo(this);
     }
 
@@ -189,12 +212,18 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         comboBox.Width = width;
     }
 
-    private void AddTriStateFilter(FlowLayoutPanel panel, string label, ComboBox comboBox)
+    private void AddTriStateFilter(FlowLayoutPanel panel, string label, ComboBox comboBox, bool includeKeepExisting = false)
     {
         panel.Controls.Add(MakeLabel(label, 70));
         comboBox.DropDownStyle = ComboBoxStyle.DropDownList;
-        comboBox.Width = 92;
+        comboBox.Width = includeKeepExisting ? 130 : 92;
         comboBox.Items.AddRange(new object[] { _allValue, _trueValue, _falseValue });
+
+        if (includeKeepExisting)
+        {
+            comboBox.Items.Add(_keepExistingValue);
+        }
+
         comboBox.SelectedIndex = 0;
         comboBox.SelectedIndexChanged += (_, _) => ApplyFilters();
         panel.Controls.Add(comboBox);
@@ -215,7 +244,13 @@ public sealed class RulesView : UserControl, IPageLayoutControl
 
     private async Task LoadRulesAsync()
     {
-        _allRules = await _ruleService.GetRulesAsync().ConfigureAwait(true);
+        Task<IReadOnlyList<FinancialRule>> rules = _ruleService.GetRulesAsync();
+        Task<IReadOnlyList<string>> categories = _ruleService.GetCategoryValuesAsync();
+        Task<IReadOnlyList<string>> categoryTypes = _ruleService.GetCategoryTypeValuesAsync();
+        await Task.WhenAll(rules, categories, categoryTypes).ConfigureAwait(true);
+        _allRules = await rules.ConfigureAwait(true);
+        _categoryValues = await categories.ConfigureAwait(true);
+        _categoryTypeValues = await categoryTypes.ConfigureAwait(true);
         LoadFilterValues();
         ApplyFilters();
     }
@@ -277,12 +312,12 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         query = ApplyTextFilter(query, _categoryTypeFilter.Text, rule => rule.SpendingClass);
         query = ApplyTextFilter(query, _matchModeFilter.Text, rule => rule.DescriptionMatchMode);
         query = ApplyTextFilter(query, _incomeOwnerFilter.Text, rule => rule.IncomeOwner);
-        query = ApplyBooleanFilter(query, _incomeFilter.Text, rule => rule.IsIncome ?? false);
-        query = ApplyBooleanFilter(query, _transferFilter.Text, rule => rule.IsTransfer ?? false);
+        query = ApplyBooleanFilter(query, _incomeFilter.Text, rule => rule.IsIncome);
+        query = ApplyBooleanFilter(query, _transferFilter.Text, rule => rule.IsTransfer);
         query = ApplyBooleanFilter(query, _activeFilter.Text, rule => rule.IsActive);
         List<FinancialRule> filtered = SortRules(query).ToList();
         _bindingSource.DataSource = filtered;
-        _countLabel.Text = $"Showing {filtered.Count:N0} of {_allRules.Count:N0} rule(s)";
+        _countLabel.Text = $"{filtered.Count:N0} of {_allRules.Count:N0} rules | {_allRules.Count(rule => rule.IsActive):N0} active";
         UpdateSortGlyphs();
     }
 
@@ -296,11 +331,16 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         return query.Where(rule => string.Equals(selector(rule)?.Trim(), selectedValue.Trim(), StringComparison.OrdinalIgnoreCase));
     }
 
-    private static IEnumerable<FinancialRule> ApplyBooleanFilter(IEnumerable<FinancialRule> query, string selectedValue, Func<FinancialRule, bool> selector)
+    private static IEnumerable<FinancialRule> ApplyBooleanFilter(IEnumerable<FinancialRule> query, string selectedValue, Func<FinancialRule, bool?> selector)
     {
         if (string.IsNullOrWhiteSpace(selectedValue) || string.Equals(selectedValue, _allValue, StringComparison.OrdinalIgnoreCase))
         {
             return query;
+        }
+
+        if (string.Equals(selectedValue, _keepExistingValue, StringComparison.OrdinalIgnoreCase))
+        {
+            return query.Where(rule => !selector(rule).HasValue);
         }
 
         bool expected = string.Equals(selectedValue, _trueValue, StringComparison.OrdinalIgnoreCase);
@@ -312,14 +352,15 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         return _sortProperty switch
         {
             nameof(FinancialRule.RuleName) => Sort(rules, rule => rule.RuleName),
+            nameof(FinancialRule.StarterRuleCode) => Sort(rules, rule => rule.StarterRuleCode is null ? "Custom" : "Starter"),
             nameof(FinancialRule.MatchDescription) => Sort(rules, rule => rule.MatchDescription),
             nameof(FinancialRule.DescriptionMatchMode) => Sort(rules, rule => rule.DescriptionMatchMode),
             nameof(FinancialRule.MatchType) => Sort(rules, rule => rule.MatchType ?? string.Empty),
             nameof(FinancialRule.Category) => Sort(rules, rule => rule.Category ?? string.Empty),
             nameof(FinancialRule.SpendingClass) => Sort(rules, rule => rule.SpendingClass ?? string.Empty),
             nameof(FinancialRule.IncomeOwner) => Sort(rules, rule => rule.IncomeOwner ?? string.Empty),
-            nameof(FinancialRule.IsIncome) => Sort(rules, rule => rule.IsIncome ?? false),
-            nameof(FinancialRule.IsTransfer) => Sort(rules, rule => rule.IsTransfer ?? false),
+            nameof(FinancialRule.IsIncome) => Sort(rules, rule => rule.IsIncome),
+            nameof(FinancialRule.IsTransfer) => Sort(rules, rule => rule.IsTransfer),
             nameof(FinancialRule.IsActive) => Sort(rules, rule => rule.IsActive),
             _ => Sort(rules, rule => rule.Priority)
         };
@@ -402,6 +443,13 @@ public sealed class RulesView : UserControl, IPageLayoutControl
 
         string property = _grid.Columns[e.ColumnIndex].DataPropertyName;
 
+        if (property == nameof(FinancialRule.StarterRuleCode))
+        {
+            e.Value = string.IsNullOrWhiteSpace(e.Value as string) ? "Custom" : "Starter";
+            e.FormattingApplied = true;
+            return;
+        }
+
         if (property is not nameof(FinancialRule.IsIncome) and not nameof(FinancialRule.IsTransfer) and not nameof(FinancialRule.IsActive))
         {
             return;
@@ -416,21 +464,21 @@ public sealed class RulesView : UserControl, IPageLayoutControl
 
         if (!value.HasValue)
         {
-            e.Value = string.Empty;
+            e.Value = _keepExistingValue;
             e.CellStyle.ForeColor = UiTheme.TextMuted;
             e.FormattingApplied = true;
             return;
         }
 
         e.Value = value.Value ? _trueValue : _falseValue;
-        e.CellStyle.ForeColor = value.Value ? UiTheme.Success : Color.FromArgb(220, 38, 38);
+        e.CellStyle.ForeColor = value.Value ? UiTheme.Success : UiTheme.TextMuted;
         e.CellStyle.Font = new Font(_grid.Font, FontStyle.Bold);
         e.FormattingApplied = true;
     }
 
     private async Task AddAsync()
     {
-        using RuleEditForm form = new(new FinancialRule { RuleName = "New Rule", Priority = 100, IsActive = true });
+        using RuleEditForm form = new(new FinancialRule { RuleName = "New Rule", Priority = 100, IsActive = true }, _categoryValues, _categoryTypeValues);
 
         if (form.ShowDialog(this) != DialogResult.OK)
         {
@@ -449,7 +497,7 @@ public sealed class RulesView : UserControl, IPageLayoutControl
         }
 
         FinancialRule copy = Copy(selected);
-        using RuleEditForm form = new(copy);
+        using RuleEditForm form = new(copy, _categoryValues, _categoryTypeValues);
 
         if (form.ShowDialog(this) != DialogResult.OK)
         {
@@ -517,7 +565,7 @@ public sealed class RulesView : UserControl, IPageLayoutControl
 
     private async Task ReapplyRulesAsync()
     {
-        DialogResult confirm = MessageBox.Show(this, "Reapply the active rules to all imported transactions? This updates category, category type, income, and transfer flags for existing imported rows.", "Reapply Rules", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+        DialogResult confirm = MessageBox.Show(this, "Reapply active rules to imported transactions? This refreshes rule-based categories and financial treatment. Manual classifications and reviewed transfer links are preserved.", "Reapply Rules", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
 
         if (confirm != DialogResult.Yes)
         {
@@ -546,7 +594,8 @@ public sealed class RulesView : UserControl, IPageLayoutControl
             IsIncome = rule.IsIncome,
             IsTransfer = rule.IsTransfer,
             IsActive = rule.IsActive,
-            Notes = rule.Notes
+            Notes = rule.Notes,
+            StarterRuleCode = rule.StarterRuleCode
         };
     }
 }

@@ -153,7 +153,9 @@ public sealed class ReportRepository
                     Frequency = reader.GetStringOrEmpty("Frequency"),
                     IsActive = reader.GetBooleanValue("IsActive"),
                     IsRequired = reader.GetBooleanValue("IsRequired"),
-                    SourceDescription = reader.GetStringOrNull("SourceDescription")
+                    SourceDescription = reader.GetStringOrNull("SourceDescription"),
+                    PayeeAliases = RecurringBillAliasJson.Read(reader.GetStringOrEmpty("PayeeAliasesJson")),
+                    SourceDescriptionAliases = RecurringBillAliasJson.Read(reader.GetStringOrEmpty("SourceDescriptionAliasesJson"))
                 });
             }
         }

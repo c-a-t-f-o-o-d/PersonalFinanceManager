@@ -238,7 +238,7 @@ namespace PersonalFinanceManager.App.UI.Views
             textBox.ReadOnly = true;
             textBox.ScrollBars = ScrollBars.Vertical;
             textBox.BorderStyle = BorderStyle.None;
-            textBox.BackColor = Color.White;
+            textBox.BackColor = UiTheme.InputBackground;
             layout.Controls.Add(textBox, 0, 1);
             return card;
         }

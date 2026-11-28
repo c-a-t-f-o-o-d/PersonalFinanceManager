@@ -13,5 +13,6 @@ SET RuleName = @RuleName,
     IncomeOwner = @IncomeOwner,
     IsActive = @IsActive,
     Notes = @Notes,
+    StarterRuleCode = NULL,
     UpdatedAtUtc = SYSUTCDATETIME()
 WHERE RuleId = @RuleId;

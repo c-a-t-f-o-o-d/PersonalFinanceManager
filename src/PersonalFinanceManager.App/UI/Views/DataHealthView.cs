@@ -171,11 +171,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
             if (string.Equals(result.Severity, "Warning", StringComparison.OrdinalIgnoreCase))
             {
-                e.CellStyle.ForeColor = Color.FromArgb(185, 28, 28);
+                e.CellStyle.ForeColor = UiTheme.Danger;
             }
             else
             {
-                e.CellStyle.ForeColor = Color.FromArgb(29, 78, 216);
+                e.CellStyle.ForeColor = UiTheme.Accent;
             }
         }
 

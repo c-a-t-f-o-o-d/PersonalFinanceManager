@@ -314,7 +314,7 @@ namespace PersonalFinanceManager.App.UI.Views
             _availableBalanceMetric.Text = result.HasKnownBalance ? result.StartingAvailableBalance.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
             _monthlyBillsMetric.Text = result.MonthlyRequiredExpenses.ToString("C2", CultureInfo.CurrentCulture);
             _monthlyBurnMetric.Text = result.MonthlyNetBurn.ToString("C2", CultureInfo.CurrentCulture);
-            _monthlyBurnMetric.ForeColor = result.MonthlyNetBurn > 0M ? Color.FromArgb(220, 38, 38) : UiTheme.Success;
+            UiTheme.SetTextRole(_monthlyBurnMetric, result.MonthlyNetBurn > 0M ? "DangerText" : "SuccessText");
             _depletionMetric.Text = !result.HasCompleteInputs ? "Incomplete inputs" : result.EstimatedDepletionDate.HasValue ? result.EstimatedDepletionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) : "Beyond range";
             _projectionSource.DataSource = result.ProjectionPoints;
             _billSource.DataSource = result.IncludedBills;
@@ -399,8 +399,8 @@ namespace PersonalFinanceManager.App.UI.Views
 
             private static void DrawGrid(Graphics graphics, Rectangle plot, decimal min, decimal max)
             {
-                using Pen axisPen = new(Color.FromArgb(194, 203, 217));
-                using Pen gridPen = new(Color.FromArgb(229, 234, 242)) { DashStyle = DashStyle.Dash };
+                using Pen axisPen = new(UiTheme.TextMuted);
+                using Pen gridPen = new(UiTheme.GridLine) { DashStyle = DashStyle.Dash };
                 using Font labelFont = new("Segoe UI", 8F, FontStyle.Regular);
                 using Brush labelBrush = new SolidBrush(UiTheme.TextSecondary);
                 using StringFormat right = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };

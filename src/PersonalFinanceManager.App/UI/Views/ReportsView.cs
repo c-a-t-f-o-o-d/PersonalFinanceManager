@@ -473,7 +473,7 @@ namespace PersonalFinanceManager.App.UI.Views
             _detailSource.DataSource = details;
             UpdateMetrics(metrics, summary, monthly, report.Period);
             _reviewNotes.Lines = report.Warnings.Append(report.Period.CoverageNote).ToArray();
-            _periodLabel.ForeColor = report.Warnings.Count > 0 ? Color.DarkOrange : UiTheme.TextSecondary;
+            UiTheme.SetTextRole(_periodLabel, report.Warnings.Count > 0 ? "WarningText" : "SecondaryText");
             if (report.Warnings.Count > 0)
                 _periodLabel.Text = "Transaction relationships require review; totals include unresolved entries. See Review notes.";
             _pieChart.SetData(summary);
@@ -620,7 +620,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 Rectangle pieBounds = new(10, Math.Max(4, (Height - pieDiameter) / 2), pieDiameter, pieDiameter);
                 List<SliceLabel> labels = new();
                 float start = -90F;
-                using Pen separator = new(Color.White, 2F);
+                using Pen separator = new(UiTheme.CardBackground, 2F);
 
                 for (int index = 0; index < _items.Count; index++)
                 {
@@ -684,7 +684,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 using Font valueFont = new("Segoe UI Semibold", 9F, FontStyle.Regular);
                 using Brush primaryBrush = new SolidBrush(UiTheme.TextPrimary);
                 using Brush secondaryBrush = new SolidBrush(UiTheme.TextSecondary);
-                using Pen swatchBorder = new(Color.FromArgb(230, 235, 242));
+                using Pen swatchBorder = new(UiTheme.CardBorder);
                 int y = bounds.Top + 8;
                 int amountX = Math.Max(bounds.Left + 180, bounds.Right - 155);
                 int percentX = Math.Max(bounds.Left + 285, bounds.Right - 64);
@@ -851,7 +851,7 @@ namespace PersonalFinanceManager.App.UI.Views
                     Color baseColor = PieExpenseChartControl._palette[index % PieExpenseChartControl._palette.Length];
                     using LinearGradientBrush brush = new(bar, Lighten(baseColor, 0.14F), baseColor, LinearGradientMode.Vertical);
                     graphics.FillRectangle(brush, bar);
-                    using Pen outline = new(Color.FromArgb(190, 199, 214));
+                    using Pen outline = new(UiTheme.CardBorder);
                     graphics.DrawRectangle(outline, bar);
                     string label = item.MonthStart.ToString("MMM", CultureInfo.CurrentCulture) + Environment.NewLine + item.MonthStart.ToString("yyyy", CultureInfo.CurrentCulture);
                     Rectangle labelBounds = new(x - 22, plot.Bottom + 6, barWidth + 44, 38);
@@ -862,8 +862,8 @@ namespace PersonalFinanceManager.App.UI.Views
 
             private static void DrawChartGrid(Graphics graphics, Rectangle plot, decimal min, decimal max)
             {
-                using Pen axisPen = new(Color.FromArgb(194, 203, 217));
-                using Pen gridPen = new(Color.FromArgb(229, 234, 242)) { DashStyle = DashStyle.Dash };
+                using Pen axisPen = new(UiTheme.TextMuted);
+                using Pen gridPen = new(UiTheme.GridLine) { DashStyle = DashStyle.Dash };
                 using Font gridLabelFont = new("Segoe UI", 8F, FontStyle.Regular);
                 using Brush gridLabelBrush = new SolidBrush(UiTheme.TextSecondary);
                 using StringFormat right = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };

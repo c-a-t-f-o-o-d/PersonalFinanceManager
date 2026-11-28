@@ -5,7 +5,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class TransactionLinkEditForm : Form
+    public sealed class TransactionLinkEditForm : ThemedForm
     {
         private readonly ITransactionLinkWorkflowService _transactionLinkService;
         private readonly TextBox _sourceId = new();

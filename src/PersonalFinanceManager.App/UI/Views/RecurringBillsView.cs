@@ -42,9 +42,9 @@ namespace PersonalFinanceManager.App.UI.Views
                 RowCount = 4
             };
 
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 76));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 80));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
             Controls.Add(root);
             FlowLayoutPanel billCommands = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
@@ -64,7 +64,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
             Label help = new()
             {
-                Text = "Required recurring bills are used later for planning. Candidates are inferred from repeated categorized expenses.",
+                Text = "Keep one bill per obligation. Add former or current payees and statement descriptions on its Matching tab when a servicer changes.",
                 AutoSize = true,
                 Margin = new Padding(16, 10, 3, 3)
             };
@@ -92,10 +92,13 @@ namespace PersonalFinanceManager.App.UI.Views
             Button create = new() { Text = "Create Bill From Candidate", Width = 190 };
             create.Click += async (_, _) => await CreateBillFromCandidateAsync().ConfigureAwait(true);
             candidateCommands.Controls.Add(create);
+            Button attach = new() { Text = "Attach to Existing Bill", Width = 170 };
+            attach.Click += async (_, _) => await AttachCandidateAsync().ConfigureAwait(true);
+            candidateCommands.Controls.Add(attach);
 
             Label candidateHelp = new()
             {
-                Text = "Review candidates first. Dining/shopping patterns may be wants, not required bills.",
+                Text = "Review recurring candidates. Attach a changed payment description to its existing bill to keep one planned payment.",
                 AutoSize = true,
                 Margin = new Padding(16, 10, 3, 3)
             };
@@ -165,6 +168,8 @@ namespace PersonalFinanceManager.App.UI.Views
             AddCandidateColumn("FirstSeenDate", "First Seen", 95);
             AddCandidateColumn("LastSeenDate", "Last Seen", 95);
             AddCandidateColumn("AlreadyExists", "Exists", 70);
+            AddCandidateColumn("MatchingBillName", "Existing bill", 180);
+            AddCandidateColumn("RequiresMatchReview", "Review matching", 110);
             AddCandidateColumn("SourceDescription", "Source Description", 340);
         }
 
@@ -243,13 +248,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 IsActive = true
             };
 
-            using RecurringBillEditForm form = new(bill, _accounts, _categories, _categoryTypes, _requirementTypes);
-
-            if (form.ShowDialog(this) == DialogResult.OK)
-            {
-                await _billService.SaveBillAsync(bill).ConfigureAwait(true);
-                await RefreshBillsAsync().ConfigureAwait(true);
-            }
+            await ShowBillEditorAsync(bill).ConfigureAwait(true);
         }
 
         private async Task EditBillAsync()
@@ -270,13 +269,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            using RecurringBillEditForm form = new(bill, _accounts, _categories, _categoryTypes, _requirementTypes);
-
-            if (form.ShowDialog(this) == DialogResult.OK)
-            {
-                await _billService.SaveBillAsync(bill).ConfigureAwait(true);
-                await RefreshBillsAsync().ConfigureAwait(true);
-            }
+            await ShowBillEditorAsync(bill).ConfigureAwait(true);
         }
 
         private async Task DeleteBillAsync()
@@ -297,6 +290,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
             await _billService.DeleteBillAsync(selected.RecurringBillId).ConfigureAwait(true);
             await RefreshBillsAsync().ConfigureAwait(true);
+            await DetectCandidatesAsync().ConfigureAwait(true);
         }
 
         private async Task CreateBillFromCandidateAsync()
@@ -308,14 +302,80 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            RecurringBill bill = RecurringBillCandidateDetector.CreateDraft(candidate, DateOnly.FromDateTime(DateTime.Today));
-            using RecurringBillEditForm form = new(bill, _accounts, _categories, _categoryTypes, _requirementTypes);
-
-            if (form.ShowDialog(this) == DialogResult.OK)
+            if (candidate.AlreadyExists)
             {
-                await _billService.SaveBillAsync(bill).ConfigureAwait(true);
+                MessageBox.Show(this, $"This payment identity already belongs to '{candidate.MatchingBillName}'. Edit that bill and review any classification warning instead of creating another obligation.", "Recurring Bills", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            RecurringBill bill = RecurringBillCandidateDetector.CreateDraft(candidate, DateOnly.FromDateTime(DateTime.Today));
+            await ShowBillEditorAsync(bill).ConfigureAwait(true);
+        }
+
+        private async Task AttachCandidateAsync()
+        {
+            RecurringBillCandidate? candidate = SelectedCandidate();
+
+            if (candidate is null)
+            {
+                return;
+            }
+
+            IReadOnlyList<RecurringBill> bills = await _billService.GetBillsAsync().ConfigureAwait(true);
+
+            if (!bills.Any(bill => bill.IsActive && bill.AccountId == candidate.AccountId))
+            {
+                MessageBox.Show(this, "No active bill uses this account. Assign the existing obligation to this account before attaching its statement description.", "Recurring Bills", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            using RecurringBillAssociationForm selection = new(candidate, bills);
+
+            if (selection.ShowDialog(this) != DialogResult.OK || !selection.SelectedBillId.HasValue)
+            {
+                return;
+            }
+
+            RecurringBill? bill = await _billService.GetBillAsync(selection.SelectedBillId.Value).ConfigureAwait(true);
+
+            if (bill is null)
+            {
+                await RefreshBillsAsync().ConfigureAwait(true);
+                return;
+            }
+
+            try
+            {
+                RecurringBillMatcher.AttachCandidate(bill, candidate);
+            }
+            catch (InvalidOperationException ex)
+            {
+                MessageBox.Show(this, ex.Message, "Recurring Bills", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            await ShowBillEditorAsync(bill, showMatching: true).ConfigureAwait(true);
+        }
+
+        private async Task ShowBillEditorAsync(RecurringBill bill, bool showMatching = false)
+        {
+            using RecurringBillEditForm form = new(bill, _accounts, _categories, _categoryTypes, _requirementTypes, showMatching);
+
+            while (form.ShowDialog(this) == DialogResult.OK)
+            {
+                try
+                {
+                    bill.RecurringBillId = await _billService.SaveBillAsync(bill).ConfigureAwait(true);
+                }
+                catch (InvalidOperationException ex)
+                {
+                    MessageBox.Show(this, ex.Message, "Recurring Bills", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    continue;
+                }
+
                 await RefreshBillsAsync().ConfigureAwait(true);
                 await DetectCandidatesAsync().ConfigureAwait(true);
+                return;
             }
         }
 

@@ -27,6 +27,7 @@ namespace PersonalFinanceManager.Data.Configuration
         public string DefaultImportFolder { get; set; } = string.Empty;
         public string BackupFolder { get; set; } = string.Empty;
         public bool MaskAccountNumbers { get; set; } = true;
+        public bool UseDarkMode { get; set; }
 
         public bool HasUsableConnectionString()
         {

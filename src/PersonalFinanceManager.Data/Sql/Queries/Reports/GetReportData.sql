@@ -8,5 +8,5 @@ SELECT TransactionLinkId, SourceTransactionId, LinkedTransactionId, LinkType, Al
 FROM dbo.TransactionLink;
 
 SELECT RecurringBillId, AccountId, BillName, Payee, Category, SpendingClass, RequirementType,
-       TypicalAmount, Frequency, IsActive, IsRequired, SourceDescription
+       TypicalAmount, Frequency, IsActive, IsRequired, SourceDescription, PayeeAliasesJson, SourceDescriptionAliasesJson
 FROM dbo.RecurringBill;

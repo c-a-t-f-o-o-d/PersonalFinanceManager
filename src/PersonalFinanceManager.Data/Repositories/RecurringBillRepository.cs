@@ -49,14 +49,29 @@ namespace PersonalFinanceManager.Data.Repositories
             Validate(bill);
             await using SqlConnection connection = _connectionFactory.CreateConnection();
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+            await using SqlTransaction transaction = (SqlTransaction)await connection.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken).ConfigureAwait(false);
 
-            if (bill.RecurringBillId == 0)
+            if (bill.IsActive)
             {
-                return await InsertAsync(connection, bill, cancellationToken).ConfigureAwait(false);
+                await ValidateMatchingIdentitiesAsync(connection, transaction, bill, cancellationToken).ConfigureAwait(false);
             }
 
-            await UpdateAsync(connection, bill, cancellationToken).ConfigureAwait(false);
-            return bill.RecurringBillId;
+            int id = bill.RecurringBillId;
+            byte[] rowVersion;
+
+            if (id == 0)
+            {
+                (id, rowVersion) = await InsertAsync(connection, transaction, bill, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                rowVersion = await UpdateAsync(connection, transaction, bill, cancellationToken).ConfigureAwait(false);
+            }
+
+            await transaction.CommitAsync(cancellationToken).ConfigureAwait(false);
+            bill.RecurringBillId = id;
+            bill.RowVersion = rowVersion;
+            return id;
         }
 
         public async Task DeleteAsync(int recurringBillId, CancellationToken cancellationToken = default)
@@ -113,22 +128,51 @@ namespace PersonalFinanceManager.Data.Repositories
             return values.OrderBy(value => value).ToList();
         }
 
-        private async Task<int> InsertAsync(SqlConnection connection, RecurringBill bill, CancellationToken cancellationToken)
+        private async Task ValidateMatchingIdentitiesAsync(SqlConnection connection, SqlTransaction transaction, RecurringBill bill, CancellationToken cancellationToken)
         {
             await using SqlCommand command = connection.CreateCommand();
-            command.CommandText = _sqlResources.Read("RecurringBills/InsertBill.sql");
-            AddParameters(command, bill);
-            object? value = await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
-            return Convert.ToInt32(value);
+            command.Transaction = transaction;
+            command.CommandText = _sqlResources.Read("RecurringBills/GetBillsForMatching.sql");
+            command.Parameters.Add(SqlParameters.Int("@RecurringBillId", bill.RecurringBillId));
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                RecurringBill existing = MapBill(reader);
+
+                if (RecurringBillMatcher.HasOverlappingIdentity(existing, bill))
+                {
+                    throw new InvalidOperationException($"The payment identity overlaps active bill '{existing.BillName}'. Add former or current names to that bill, deactivate the duplicate, or use distinct statement descriptions and accounts for separate obligations.");
+                }
+            }
         }
 
-        private async Task UpdateAsync(SqlConnection connection, RecurringBill bill, CancellationToken cancellationToken)
+        private async Task<(int Id, byte[] RowVersion)> InsertAsync(SqlConnection connection, SqlTransaction transaction, RecurringBill bill, CancellationToken cancellationToken)
         {
             await using SqlCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = _sqlResources.Read("RecurringBills/InsertBill.sql");
+            AddParameters(command, bill);
+            await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+            await reader.ReadAsync(cancellationToken).ConfigureAwait(false);
+            return (reader.GetInt32(0), reader.GetFieldValue<byte[]>(1));
+        }
+
+        private async Task<byte[]> UpdateAsync(SqlConnection connection, SqlTransaction transaction, RecurringBill bill, CancellationToken cancellationToken)
+        {
+            await using SqlCommand command = connection.CreateCommand();
+            command.Transaction = transaction;
             command.CommandText = _sqlResources.Read("RecurringBills/UpdateBill.sql");
             AddParameters(command, bill);
             command.Parameters.Add(SqlParameters.Int("@RecurringBillId", bill.RecurringBillId));
-            await command.ExecuteNonQueryAsync(cancellationToken).ConfigureAwait(false);
+            command.Parameters.Add(new SqlParameter("@RowVersion", System.Data.SqlDbType.Binary, 8) { Value = bill.RowVersion });
+
+            if (await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false) is not byte[] rowVersion)
+            {
+                throw new InvalidOperationException("This bill was changed or deleted after it was loaded. Your changes were not saved. Cancel this edit, refresh the bill list, and reopen it before saving again.");
+            }
+
+            return rowVersion;
         }
 
         private static void AddParameters(SqlCommand command, RecurringBill bill)
@@ -146,6 +190,8 @@ namespace PersonalFinanceManager.Data.Repositories
             command.Parameters.Add(SqlParameters.Bit("@IsRequired", bill.IsRequired));
             command.Parameters.Add(SqlParameters.Bit("@IsActive", bill.IsActive));
             command.Parameters.Add(SqlParameters.NVarChar("@SourceDescription", bill.SourceDescription, 1000));
+            command.Parameters.Add(SqlParameters.NVarChar("@PayeeAliasesJson", RecurringBillAliasJson.Write(bill.PayeeAliases), -1));
+            command.Parameters.Add(SqlParameters.NVarChar("@SourceDescriptionAliasesJson", RecurringBillAliasJson.Write(bill.SourceDescriptionAliases), -1));
             command.Parameters.Add(SqlParameters.Date("@FirstSeenDate", bill.FirstSeenDate));
             command.Parameters.Add(SqlParameters.Date("@LastSeenDate", bill.LastSeenDate));
             command.Parameters.Add(SqlParameters.Int("@TransactionCount", bill.TransactionCount));
@@ -171,17 +217,25 @@ namespace PersonalFinanceManager.Data.Repositories
                 IsRequired = reader.GetBooleanValue("IsRequired"),
                 IsActive = reader.GetBooleanValue("IsActive"),
                 SourceDescription = reader.GetStringOrNull("SourceDescription"),
+                PayeeAliases = RecurringBillAliasJson.Read(reader.GetStringOrEmpty("PayeeAliasesJson")),
+                SourceDescriptionAliases = RecurringBillAliasJson.Read(reader.GetStringOrEmpty("SourceDescriptionAliasesJson")),
                 FirstSeenDate = reader.GetDateOnlyOrNull("FirstSeenDate"),
                 LastSeenDate = reader.GetDateOnlyOrNull("LastSeenDate"),
                 TransactionCount = reader.GetInt32Value("TransactionCount"),
                 Notes = reader.GetStringOrNull("Notes"),
                 CreatedAtUtc = reader.GetDateTimeValue("CreatedAtUtc"),
-                UpdatedAtUtc = reader.GetDateTimeValue("UpdatedAtUtc")
+                UpdatedAtUtc = reader.GetDateTimeValue("UpdatedAtUtc"),
+                RowVersion = reader.GetFieldValue<byte[]>(reader.GetOrdinal("RowVersion"))
             };
         }
 
         private static void Validate(RecurringBill bill)
         {
+            if (bill.RecurringBillId != 0 && bill.RowVersion.Length != 8)
+            {
+                throw new InvalidOperationException("This bill needs to be reloaded before editing. Cancel this edit, refresh the bill list, and reopen it before saving again.");
+            }
+
             if (string.IsNullOrWhiteSpace(bill.BillName))
             {
                 throw new InvalidOperationException("Bill name is required.");
@@ -192,7 +246,15 @@ namespace PersonalFinanceManager.Data.Repositories
                 throw new InvalidOperationException("Payee is required.");
             }
 
+            ValidateLength(bill.BillName, 200, "Bill name");
+            ValidateLength(bill.Payee, 300, "Payee");
+            ValidateLength(bill.SourceDescription, 1000, "Statement description");
+            ValidateLength(bill.Category, 200, "Category");
+            ValidateLength(bill.SpendingClass, 100, "Category type");
+            ValidateLength(bill.RequirementType, 100, "Planning purpose");
+            ValidateLength(bill.Notes, 1000, "Notes");
             bill.Frequency = BillSchedule.NormalizeFrequency(bill.Frequency);
+            RecurringBillMatcher.NormalizeAliases(bill);
 
             if (bill.TypicalAmount < 0)
             {
@@ -202,6 +264,14 @@ namespace PersonalFinanceManager.Data.Repositories
             if (bill.DueDay.HasValue && (bill.DueDay.Value < 1 || bill.DueDay.Value > 31))
             {
                 throw new InvalidOperationException("Due day must be between 1 and 31.");
+            }
+        }
+
+        private static void ValidateLength(string? value, int maximumLength, string label)
+        {
+            if (value?.Length > maximumLength)
+            {
+                throw new InvalidOperationException($"{label} must be {maximumLength} characters or fewer.");
             }
         }
     }

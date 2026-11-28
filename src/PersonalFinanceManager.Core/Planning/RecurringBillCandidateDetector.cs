@@ -16,6 +16,7 @@ public static class RecurringBillCandidateDetector
             .Select(group =>
             {
                 ExpenseDetailItem latest = group.OrderByDescending(row => row.TransactionDate).ThenByDescending(row => row.ImportedTransactionId).First();
+                RecurringBill[] matchingBills = data.Bills.Where(bill => bill.IsActive && RecurringBillMatcher.MatchesIdentity(latest, bill)).ToArray();
 
                 return new RecurringBillCandidate
                 {
@@ -35,7 +36,9 @@ public static class RecurringBillCandidateDetector
                     MonthCount = group.Select(row => (row.TransactionDate.Year, row.TransactionDate.Month)).Distinct().Count(),
                     SuggestedDueDay = latest.TransactionDate.Day,
                     SuggestedFrequency = BillSchedule.InferFrequency(group.Select(row => row.TransactionDate)),
-                    AlreadyExists = data.Bills.Any(bill => bill.IsActive && bill.AccountId == latest.AccountId && string.Equals(bill.SourceDescription?.Trim(), latest.Description.Trim(), StringComparison.OrdinalIgnoreCase))
+                    AlreadyExists = matchingBills.Length > 0,
+                    MatchingBillName = matchingBills.Length == 0 ? null : string.Join(", ", matchingBills.Select(bill => bill.BillName)),
+                    RequiresMatchReview = matchingBills.Length > 1 || matchingBills.Any(bill => group.Any(row => !RecurringBillMatcher.SameBucket(row, bill)))
                 };
             }).OrderByDescending(candidate => candidate.AverageAmount).ThenBy(candidate => candidate.Payee).ToArray();
     }

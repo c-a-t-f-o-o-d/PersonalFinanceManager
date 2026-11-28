@@ -1,11 +1,15 @@
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Core.Planning;
+using PersonalFinanceManager.App.UI.Styling;
 
 namespace PersonalFinanceManager.App.UI.Views;
 
-public sealed class RecurringBillEditForm : Form
+public sealed class RecurringBillEditForm : ThemedForm
 {
     private readonly IReadOnlyList<Account> _accounts;
+    private readonly string _previousPayee;
+    private readonly string? _previousDescription;
+    private readonly IReadOnlyList<string> _previousDescriptionAliases;
     private readonly TextBox _billName = new();
     private readonly TextBox _payee = new();
     private readonly ComboBox _account = new();
@@ -19,35 +23,61 @@ public sealed class RecurringBillEditForm : Form
     private readonly CheckBox _isRequired = new() { Text = "Required", AutoSize = true };
     private readonly CheckBox _isActive = new() { Text = "Active", AutoSize = true };
     private readonly TextBox _sourceDescription = new();
+    private readonly TextBox _payeeAliases = new();
+    private readonly TextBox _sourceDescriptionAliases = new();
+    private readonly CheckBox _preserveFormerNames = new() { Text = "Keep former names when replacing them", Checked = true, AutoSize = true };
+    private readonly CheckBox _reviewDescriptionConversion = new() { Text = "I included the former exact statement descriptions", AutoSize = true };
     private readonly TextBox _notes = new();
 
-    public RecurringBillEditForm(RecurringBill bill, IReadOnlyList<Account> accounts, IReadOnlyList<string> categories, IReadOnlyList<string> categoryTypes, IReadOnlyList<string> requirementTypes)
+    public RecurringBillEditForm(RecurringBill bill, IReadOnlyList<Account> accounts, IReadOnlyList<string> categories, IReadOnlyList<string> categoryTypes, IReadOnlyList<string> requirementTypes, bool showMatching = false)
     {
         Bill = bill;
         _accounts = accounts;
+        _previousPayee = bill.Payee;
+        _previousDescription = bill.SourceDescription;
+        _previousDescriptionAliases = bill.SourceDescriptionAliases.ToArray();
         Text = bill.RecurringBillId == 0 ? "Add Recurring Bill" : "Edit Recurring Bill";
-        Width = 740;
-        Height = 690;
+        Width = 800;
+        Height = 720;
+        MinimumSize = new Size(720, 640);
         StartPosition = FormStartPosition.CenterParent;
         Font = new Font("Segoe UI", 9F);
-        InitializeLayout(categories, categoryTypes, requirementTypes);
+        InitializeLayout(categories, categoryTypes, requirementTypes, showMatching);
         LoadBill();
     }
 
     public RecurringBill Bill { get; }
 
-    private void InitializeLayout(IReadOnlyList<string> categories, IReadOnlyList<string> categoryTypes, IReadOnlyList<string> requirementTypes)
+    private void InitializeLayout(IReadOnlyList<string> categories, IReadOnlyList<string> categoryTypes, IReadOnlyList<string> requirementTypes, bool showMatching)
     {
         TableLayoutPanel root = new()
         {
             Dock = DockStyle.Fill,
-            ColumnCount = 2,
+            ColumnCount = 1,
+            RowCount = 3,
             Padding = new Padding(12)
         };
 
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 150));
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 58));
+        root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
+        root.RowStyles.Add(new RowStyle(SizeType.Absolute, 48));
         Controls.Add(root);
+        root.Controls.Add(new Label
+        {
+            Text = "One bill, one planned payment\r\nUse a stable name such as Home mortgage. Keep former and current payment descriptions together on the Matching tab when a servicer changes.",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.MiddleLeft
+        }, 0, 0);
+
+        TabControl tabs = new() { Dock = DockStyle.Fill };
+        TabPage detailsPage = new("Bill details") { AutoScroll = true };
+        TabPage matchingPage = new("Matching") { AutoScroll = true };
+        tabs.TabPages.Add(detailsPage);
+        tabs.TabPages.Add(matchingPage);
+        tabs.SelectedTab = showMatching ? matchingPage : detailsPage;
+        root.Controls.Add(tabs, 0, 1);
+        TableLayoutPanel details = CreateFieldsPanel(detailsPage);
+        TableLayoutPanel matching = CreateFieldsPanel(matchingPage);
         _account.DropDownStyle = ComboBoxStyle.DropDownList;
         _account.DisplayMember = nameof(AccountOption.DisplayName);
         _account.ValueMember = nameof(AccountOption.AccountId);
@@ -70,26 +100,65 @@ public sealed class RecurringBillEditForm : Form
         _nextDueDate.Format = DateTimePickerFormat.Short;
         _nextDueDate.ShowCheckBox = true;
         _sourceDescription.Multiline = true;
-        _sourceDescription.Height = 60;
+        _sourceDescription.ScrollBars = ScrollBars.Vertical;
+        _sourceDescription.MaxLength = 1000;
+        _sourceDescription.Name = "StatementDescriptionTextBox";
+        _payee.Name = "CurrentPayeeTextBox";
+        _billName.Name = "BillNameTextBox";
+        _payeeAliases.Name = "PayeeAliasesTextBox";
+        _sourceDescriptionAliases.Name = "StatementDescriptionAliasesTextBox";
+        _preserveFormerNames.Name = "PreserveFormerNamesCheckBox";
+        _reviewDescriptionConversion.Name = "ReviewDescriptionConversionCheckBox";
+        ConfigureAliasBox(_payeeAliases);
+        ConfigureAliasBox(_sourceDescriptionAliases);
+        _billName.MaxLength = 200;
+        _payee.MaxLength = 300;
         _notes.Multiline = true;
-        _notes.Height = 70;
+        _notes.ScrollBars = ScrollBars.Vertical;
+        _notes.MaxLength = 1000;
         int row = 0;
-        AddRow(root, ref row, "Bill name", _billName, 34);
-        AddRow(root, ref row, "Payee", _payee, 34);
-        AddRow(root, ref row, "Account", _account, 34);
-        AddRow(root, ref row, "Category", _category, 34);
-        AddRow(root, ref row, "Category Type", _categoryType, 34);
-        AddRow(root, ref row, "Need/Want/etc.", _requirementType, 34);
-        AddRow(root, ref row, "Amount per occurrence", _typicalAmount, 34);
-        AddRow(root, ref row, "Due day", _dueDay, 34);
-        AddRow(root, ref row, "Next due date", _nextDueDate, 34);
-        AddRow(root, ref row, "Frequency", _frequency, 34);
+        AddRow(details, ref row, "Bill name", _billName, 34);
+        AddRow(details, ref row, "Current payee", _payee, 34);
+        AddRow(details, ref row, "Account", _account, 34);
+        AddRow(details, ref row, "Category", _category, 34);
+        AddRow(details, ref row, "Category type", _categoryType, 34);
+        AddRow(details, ref row, "Planning purpose", _requirementType, 34);
+        AddRow(details, ref row, "Amount per occurrence", _typicalAmount, 34);
+        AddRow(details, ref row, "Due day (0 = unset)", _dueDay, 34);
+        AddRow(details, ref row, "Next due date", _nextDueDate, 34);
+        AddRow(details, ref row, "Frequency", _frequency, 34);
         FlowLayoutPanel flags = new() { Dock = DockStyle.Fill, FlowDirection = FlowDirection.LeftToRight };
         flags.Controls.Add(_isRequired);
         flags.Controls.Add(_isActive);
-        AddRow(root, ref row, "Flags", flags, 34);
-        AddRow(root, ref row, "Source description", _sourceDescription, 70);
-        AddRow(root, ref row, "Notes", _notes, 80);
+        AddRow(details, ref row, "Flags", flags, 34);
+        AddRow(details, ref row, "Notes", _notes, 80);
+        FinalizeFixedRows(details, row);
+
+        int matchingRow = 0;
+
+        if (Bill.RecurringBillId > 0)
+        {
+            AddRow(matching, ref matchingRow, "When changing names", _preserveFormerNames, 34);
+
+            if (string.IsNullOrWhiteSpace(_previousDescription) && _previousDescriptionAliases.All(string.IsNullOrWhiteSpace))
+            {
+                AddRow(matching, ref matchingRow, "Conversion review", _reviewDescriptionConversion, 34);
+            }
+        }
+
+        AddRow(matching, ref matchingRow, "Statement description", _sourceDescription, 64);
+        AddRow(matching, ref matchingRow, "Additional descriptions\r\n(one per line)", _sourceDescriptionAliases, 142);
+        AddRow(matching, ref matchingRow, "Former / other payees\r\n(one per line)", _payeeAliases, 100);
+        Label matchingHelp = new()
+        {
+            Text = "Copy complete descriptions from imported transactions. Matching ignores letter case and surrounding spaces, and stays within the bill's account, category, and category type.\r\n\r\nWhen any statement description is entered, only those exact descriptions identify historical payments. Payee names are used only when all description fields are empty.\r\n\r\nAliases preserve history; they do not create another scheduled payment or change imported transactions. Review each alias before adding it.",
+            Dock = DockStyle.Fill,
+            TextAlign = ContentAlignment.TopLeft
+        };
+        matching.Controls.Add(matchingHelp, 0, matchingRow);
+        matching.SetColumnSpan(matchingHelp, 2);
+        matching.RowStyles.Add(new RowStyle(SizeType.Absolute, 150));
+        FinalizeFixedRows(matching, matchingRow + 1);
 
         FlowLayoutPanel buttons = new()
         {
@@ -98,7 +167,7 @@ public sealed class RecurringBillEditForm : Form
         };
 
         Button cancel = new() { Text = "Cancel", DialogResult = DialogResult.Cancel, Width = 90 };
-        Button ok = new() { Text = "Save", Width = 90 };
+        Button ok = new() { Text = "Save", Name = "SaveRecurringBillButton", Width = 90 };
 
         ok.Click += (_, _) =>
         {
@@ -117,10 +186,26 @@ public sealed class RecurringBillEditForm : Form
 
         buttons.Controls.Add(cancel);
         buttons.Controls.Add(ok);
-        AddRow(root, ref row, string.Empty, buttons, 44);
-        FinalizeFixedRows(root, row);
+        root.Controls.Add(buttons, 0, 2);
         AcceptButton = ok;
         CancelButton = cancel;
+    }
+
+    private static TableLayoutPanel CreateFieldsPanel(TabPage page)
+    {
+        TableLayoutPanel panel = new() { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Padding = new Padding(8) };
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 170));
+        panel.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+        page.Controls.Add(panel);
+        return panel;
+    }
+
+    private static void ConfigureAliasBox(TextBox textBox)
+    {
+        textBox.Multiline = true;
+        textBox.AcceptsReturn = true;
+        textBox.ScrollBars = ScrollBars.Vertical;
+        textBox.MaxLength = 51000;
     }
 
     private static void ConfigureMoney(NumericUpDown control)
@@ -186,6 +271,8 @@ public sealed class RecurringBillEditForm : Form
         _isRequired.Checked = Bill.IsRequired;
         _isActive.Checked = Bill.IsActive;
         _sourceDescription.Text = Bill.SourceDescription ?? string.Empty;
+        _payeeAliases.Lines = Bill.PayeeAliases.ToArray();
+        _sourceDescriptionAliases.Lines = Bill.SourceDescriptionAliases.ToArray();
         _notes.Text = Bill.Notes ?? string.Empty;
     }
 
@@ -226,8 +313,23 @@ public sealed class RecurringBillEditForm : Form
             throw new InvalidOperationException("Choose a bill frequency; the historical cadence could not be established automatically.");
         }
 
+        RecurringBill matching = new()
+        {
+            Payee = payee,
+            SourceDescription = EmptyToNull(_sourceDescription.Text),
+            PayeeAliases = _payeeAliases.Lines,
+            SourceDescriptionAliases = _sourceDescriptionAliases.Lines
+        };
+
+        if (Bill.RecurringBillId > 0 && _preserveFormerNames.Checked)
+        {
+            RecurringBillMatcher.PreserveFormerNames(matching, _previousPayee, _previousDescription,
+                _previousDescriptionAliases, _reviewDescriptionConversion.Checked);
+        }
+
+        RecurringBillMatcher.NormalizeAliases(matching);
         Bill.BillName = billName;
-        Bill.Payee = payee;
+        Bill.Payee = matching.Payee;
         Bill.AccountId = (_account.SelectedItem as AccountOption)?.AccountId;
         Bill.Category = EmptyToNull(_category.Text);
         Bill.SpendingClass = EmptyToNull(_categoryType.Text);
@@ -238,7 +340,9 @@ public sealed class RecurringBillEditForm : Form
         Bill.Frequency = BillSchedule.NormalizeFrequency(_frequency.SelectedItem?.ToString());
         Bill.IsRequired = _isRequired.Checked;
         Bill.IsActive = _isActive.Checked;
-        Bill.SourceDescription = EmptyToNull(_sourceDescription.Text);
+        Bill.SourceDescription = matching.SourceDescription;
+        Bill.PayeeAliases = matching.PayeeAliases;
+        Bill.SourceDescriptionAliases = matching.SourceDescriptionAliases;
         Bill.Notes = EmptyToNull(_notes.Text);
     }
 

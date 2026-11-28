@@ -1,9 +1,10 @@
+using PersonalFinanceManager.App.UI.Styling;
 using System.Globalization;
 using PersonalFinanceManager.Core.Models;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class TransactionEditForm : Form
+    public sealed class TransactionEditForm : ThemedForm
     {
         private readonly ComboBox _account = new();
         private readonly DateTimePicker _date = new();

@@ -442,8 +442,8 @@ namespace PersonalFinanceManager.App.UI.Views
                 Category = category,
                 SpendingClass = categoryType,
                 Merchant = example.Merchant,
-                IsIncome = example.IsIncome,
-                IsTransfer = example.IsTransfer,
+                IsIncome = null,
+                IsTransfer = null,
                 IsActive = true,
                 Notes = "Created from the Transactions quick categorize workflow."
             };
@@ -457,7 +457,8 @@ namespace PersonalFinanceManager.App.UI.Views
 
             int count = await _transactionWorkflowService.CreateRuleAndApplyAsync(form.Rule).ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
-            MessageBox.Show(this, $"Created rule and updated {count} matching transaction(s).", "Create Rule", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            string message = form.Rule.IsActive ? $"Created rule and updated {count} matching transaction(s)." : "Saved an inactive rule. Activate it from Rules when you are ready to use it.";
+            MessageBox.Show(this, message, "Create Rule", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
         private IReadOnlyList<ImportedTransaction> GetSelectedTransactions()

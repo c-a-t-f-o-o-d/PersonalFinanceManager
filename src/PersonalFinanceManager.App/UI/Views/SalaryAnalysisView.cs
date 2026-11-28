@@ -494,7 +494,7 @@ namespace PersonalFinanceManager.App.UI.Views
             list.AutoScroll = true;
             list.Tag = "Scrollable";
             list.TabStop = true;
-            list.BackColor = Color.White;
+            list.BackColor = UiTheme.InputBackground;
             list.Padding = new Padding(4, 4, 4, 4);
             list.BorderStyle = BorderStyle.FixedSingle;
             list.Margin = new Padding(0, 0, 0, 6);

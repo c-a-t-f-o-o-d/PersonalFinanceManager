@@ -391,17 +391,17 @@ namespace PersonalFinanceManager.App.UI.Views
             _moneyInMetric.Text = summary.TotalMoneyIn.ToString("C2", CultureInfo.CurrentCulture);
             _moneyOutMetric.Text = summary.TotalMoneyOut.ToString("C2", CultureInfo.CurrentCulture);
             _netMetric.Text = summary.NetCashFlow.ToString("C2", CultureInfo.CurrentCulture);
-            _netMetric.ForeColor = summary.NetCashFlow >= 0M ? UiTheme.Success : Color.FromArgb(220, 38, 38);
+            UiTheme.SetTextRole(_netMetric, summary.NetCashFlow >= 0M ? "SuccessText" : "DangerText");
             decimal averageNet = report.Period.MonthEquivalent > 0M ? summary.NetCashFlow / report.Period.MonthEquivalent : 0M;
             _averageNetMetric.Text = report.Period.HasObservedTransactions ? averageNet.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
-            _averageNetMetric.ForeColor = averageNet >= 0M ? UiTheme.Success : Color.FromArgb(220, 38, 38);
+            UiTheme.SetTextRole(_averageNetMetric, averageNet >= 0M ? "SuccessText" : "DangerText");
 
             _periodLabel.Text = report.Period.HasObservedTransactions
                 ? $"{report.Period.FromDate:MMM d, yyyy} - {report.Period.ToDate:MMM d, yyyy} | {report.Period.MonthCount} calendar months | Import coverage unverified"
                 : report.Period.CoverageNote;
 
             _reviewNotes.Lines = report.Warnings.Append(report.Period.CoverageNote).ToArray();
-            _periodLabel.ForeColor = report.Warnings.Count > 0 ? Color.DarkOrange : UiTheme.TextSecondary;
+            UiTheme.SetTextRole(_periodLabel, report.Warnings.Count > 0 ? "WarningText" : "SecondaryText");
 
             if (report.Warnings.Count > 0)
             {
@@ -506,8 +506,8 @@ namespace PersonalFinanceManager.App.UI.Views
                 for (int index = 0; index < _items.Count; index++)
                 {
                     MoneyInOutMonthlyItem item = _items[index];
-                    DrawSingleBar(graphics, plot, x, barWidth, item.MoneyIn, max, Color.FromArgb(22, 163, 74));
-                    DrawSingleBar(graphics, plot, x + barWidth + 3, barWidth, item.MoneyOut, max, Color.FromArgb(220, 38, 38));
+                    DrawSingleBar(graphics, plot, x, barWidth, item.MoneyIn, max, UiTheme.Success);
+                    DrawSingleBar(graphics, plot, x + barWidth + 3, barWidth, item.MoneyOut, max, UiTheme.Danger);
                     string label = item.MonthStart.ToString("MMM", CultureInfo.CurrentCulture) + Environment.NewLine + item.MonthStart.ToString("yyyy", CultureInfo.CurrentCulture);
                     Rectangle labelBounds = new(x - 28, plot.Bottom + 6, barWidth * 2 + 60, 38);
                     using Brush labelBrush = new SolidBrush(UiTheme.TextPrimary);
@@ -522,14 +522,14 @@ namespace PersonalFinanceManager.App.UI.Views
                 Rectangle bar = new(x, plot.Bottom - height, width, Math.Max(1, height));
                 using LinearGradientBrush brush = new(bar, Lighten(color, 0.18F), color, LinearGradientMode.Vertical);
                 graphics.FillRectangle(brush, bar);
-                using Pen outline = new(Color.FromArgb(190, 199, 214));
+                using Pen outline = new(UiTheme.CardBorder);
                 graphics.DrawRectangle(outline, bar);
             }
 
             private static void DrawGrid(Graphics graphics, Rectangle plot, decimal max)
             {
-                using Pen axisPen = new(Color.FromArgb(194, 203, 217));
-                using Pen gridPen = new(Color.FromArgb(229, 234, 242)) { DashStyle = DashStyle.Dash };
+                using Pen axisPen = new(UiTheme.TextMuted);
+                using Pen gridPen = new(UiTheme.GridLine) { DashStyle = DashStyle.Dash };
                 using Font labelFont = new("Segoe UI", 8F, FontStyle.Regular);
                 using Brush labelBrush = new SolidBrush(UiTheme.TextSecondary);
                 using StringFormat right = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
@@ -548,8 +548,8 @@ namespace PersonalFinanceManager.App.UI.Views
 
             private static void DrawLegend(Graphics graphics, Rectangle bounds)
             {
-                using Brush inBrush = new SolidBrush(Color.FromArgb(22, 163, 74));
-                using Brush outBrush = new SolidBrush(Color.FromArgb(220, 38, 38));
+                using Brush inBrush = new SolidBrush(UiTheme.Success);
+                using Brush outBrush = new SolidBrush(UiTheme.Danger);
                 using Brush textBrush = new SolidBrush(UiTheme.TextPrimary);
                 graphics.FillRectangle(inBrush, bounds.Left, bounds.Top + 5, 12, 12);
                 graphics.DrawString("Money In", UiTheme.SmallFont, textBrush, bounds.Left + 18, bounds.Top + 2);
