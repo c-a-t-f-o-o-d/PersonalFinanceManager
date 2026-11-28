@@ -8,7 +8,6 @@ PersonalFinanceManager is under active development. This roadmap focuses on publ
 - Finish public-release cleanup.
 - Keep SQL resources organized by feature.
 - Continue improving test coverage around importers, duplicate handling, transaction links, and salary/runway calculations.
-- Add screenshots generated from demo data.
 - Improve first-run setup and error messages.
 - Validate the demo-data workflow end to end.
 
@@ -33,7 +32,6 @@ PersonalFinanceManager is under active development. This roadmap focuses on publ
 ## Public usability
 
 - Add a simple release package.
-- Add demo-data screenshots.
 - Add a guided setup walkthrough.
 - Improve documentation for common SQL Server and LocalDB setup problems.
 
@@ -54,7 +52,7 @@ PersonalFinanceManager is under active development. This roadmap focuses on publ
 ## Recent cleanup checkpoint
 
 - SQL resource final sweep moved schema/bootstrap SQL into embedded resources.
-- Remaining near-term focus: review service contracts, polish first-run setup, and perform final README/screenshot pass before public baseline.
+- Remaining near-term focus: review service contracts, polish first-run setup, and keep public documentation aligned with the application.
 
 
 ## Release verification
@@ -64,16 +62,9 @@ PersonalFinanceManager is under active development. This roadmap focuses on publ
 
 - Full public baseline verification script added to support release readiness.
 
-## Screenshot/demo polish
-
-- Capture public screenshots from sanitized demo data.
-- Keep private screenshots out of source control.
-- Add a small screenshot set after the UI and demo workflow stabilize.
-
 ## Documentation and release polish
 
 - Keep `KNOWN_LIMITATIONS.md` current as storage providers, import formats, and calculation features evolve.
-- Add public screenshots based only on demo data before the first tagged release.
 
 
 ## Public baseline polish notes

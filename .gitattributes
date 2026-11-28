@@ -6,3 +6,4 @@
 *.csv text eol=crlf
 *.xlsx binary
 *.zip binary
+*.png binary

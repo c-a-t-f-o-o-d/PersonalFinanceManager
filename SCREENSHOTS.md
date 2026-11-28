@@ -1,48 +1,41 @@
-# Screenshot Guide
+# Application gallery
 
-Screenshots are useful for the public repository, but they must be created from the built-in demo data or from a clean synthetic database.
+Explore the application's transaction review, financial reports, and planning tools in light and dark themes. All screenshots use fictional sample data.
 
-## Recommended screenshot set
+Select an image to view it at full size.
 
-Use the Setup page to configure LocalDB and load demo data, then capture:
+## Expense analysis
 
-1. Setup
-2. Accounts
-3. Transactions
-4. Rules
-5. Expense Analysis
-6. Money In/Out
-7. Salary Needed
-8. Bills
-9. Runway
-10. Data Health
+Spending totals, category breakdowns, and monthly trends help explain where money goes. Both themes show the same account activity and date range.
 
-Store public screenshots under:
+### Dark theme
 
-```text
-assets/screenshots/
-```
+[![Expense Analysis in the neutral dark theme.](assets/screenshots/expense-analysis-dark.png)](assets/screenshots/expense-analysis-dark.png)
 
-## Privacy checklist
+### Light theme
 
-Before committing screenshots, verify they do not contain:
+[![The same Expense Analysis report in the light theme.](assets/screenshots/expense-analysis-light.png)](assets/screenshots/expense-analysis-light.png)
 
-- real account names or account numbers
-- real merchants or payees
-- real employer names
-- real balances or debts
-- real connection strings
-- real import file paths
-- real transaction descriptions
-- private machine names, user folders, or IP addresses
+## Transactions
 
-If you are unsure whether a screenshot is safe, recreate it from the demo database.
+Review income, purchases, transfers, and repayments across imported accounts. Account, date, category, and text filters narrow the table; quick categorization and rule creation are available above it.
 
-## Private screenshots
+[![Transactions for the fictional household.](assets/screenshots/transactions-dark.png)](assets/screenshots/transactions-dark.png)
 
-Private screenshots may be useful while debugging local data. Do not commit them. The repository ignores:
+## Cash flow
 
-```text
-screenshots/private/
-assets/screenshots/private/
-```
+Compare income, outflow, and monthly net cash flow across cash accounts, with transfers and credit-card payments handled according to their financial role.
+
+[![Cash-flow overview with income and outflow trends.](assets/screenshots/cash-flow-dark.png)](assets/screenshots/cash-flow-dark.png)
+
+## Recurring bills
+
+Track planned payments, due dates, and required or optional expenses. Keep one recurring obligation when a mortgage or other bill changes providers.
+
+[![Recurring bills for the fictional household.](assets/screenshots/recurring-bills-dark.png)](assets/screenshots/recurring-bills-dark.png)
+
+## Savings runway
+
+Project available funds against required bills and the selected income scenario. The application also exposes the assumptions and missing inputs used for the estimate.
+
+[![Savings runway with available funds and a balance projection.](assets/screenshots/savings-runway-dark.png)](assets/screenshots/savings-runway-dark.png)
