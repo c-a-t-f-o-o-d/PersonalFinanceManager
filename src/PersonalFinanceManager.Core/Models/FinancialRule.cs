@@ -17,6 +17,7 @@ namespace PersonalFinanceManager.Core.Models
         public string? IncomeOwner { get; set; }
         public bool IsActive { get; set; } = true;
         public string? Notes { get; set; }
+        public string? StarterRuleCode { get; set; }
         public DateTime CreatedAtUtc { get; set; }
         public DateTime UpdatedAtUtc { get; set; }
     }

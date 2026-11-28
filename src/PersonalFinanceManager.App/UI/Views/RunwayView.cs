@@ -8,7 +8,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class RunwayView : UserControl, IPageLayoutControl
+    public sealed class RunwayView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IRunwayWorkflowService _runwayService;
         private readonly ComboBox _scenario = new();
@@ -37,6 +37,12 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
             await RefreshAsync().ConfigureAwait(true);
         }
 
@@ -47,14 +53,12 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4,
+                RowCount = 2,
                 BackColor = UiTheme.AppBackground
             };
 
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 104));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 48));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 52));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
 
             CardPanel filterCard = new()
@@ -66,6 +70,18 @@ namespace PersonalFinanceManager.App.UI.Views
 
             root.Controls.Add(filterCard, 0, 0);
             BuildFilterCard(filterCard);
+
+            TableLayoutPanel overview = new()
+            {
+                ColumnCount = 1,
+                RowCount = 2,
+                BackColor = UiTheme.AppBackground,
+                Margin = Padding.Empty
+            };
+
+            overview.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            overview.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
+            overview.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
             TableLayoutPanel metricRow = new()
             {
@@ -80,11 +96,12 @@ namespace PersonalFinanceManager.App.UI.Views
                 metricRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
             }
 
-            root.Controls.Add(metricRow, 0, 1);
+            overview.Controls.Add(metricRow, 0, 0);
             metricRow.Controls.Add(BuildMetricCard("Available Balance", _availableBalanceMetric), 0, 0);
             metricRow.Controls.Add(BuildMetricCard("Required Bills / Month", _monthlyBillsMetric), 1, 0);
             metricRow.Controls.Add(BuildMetricCard("Net Monthly Burn", _monthlyBurnMetric), 2, 0);
             metricRow.Controls.Add(BuildMetricCard("Estimated Depletion", _depletionMetric), 3, 0);
+            PageLayout.ResponsiveMetrics(overview, 0, metricRow, 2, 850);
 
             CardPanel chartCard = new()
             {
@@ -93,8 +110,9 @@ namespace PersonalFinanceManager.App.UI.Views
                 Margin = new Padding(0, 0, 0, 12)
             };
 
-            root.Controls.Add(chartCard, 0, 2);
             BuildChartCard(chartCard);
+
+            overview.Controls.Add(chartCard, 0, 1);
 
             CardPanel gridCard = new()
             {
@@ -102,8 +120,9 @@ namespace PersonalFinanceManager.App.UI.Views
                 Padding = new Padding(12)
             };
 
-            root.Controls.Add(gridCard, 0, 3);
-            BuildGridTabs(gridCard);
+            root.Controls.Add(gridCard, 0, 1);
+            BuildGridTabs(gridCard, overview);
+            PageLayout.AutoSizeHeaders(root, 0);
             UiTheme.ApplyTo(this);
         }
 
@@ -196,10 +215,14 @@ namespace PersonalFinanceManager.App.UI.Views
             layout.Controls.Add(_chart, 0, 2);
         }
 
-        private void BuildGridTabs(Control parent)
+        private void BuildGridTabs(Control parent, TableLayoutPanel overview)
         {
             TabControl tabs = new() { Dock = DockStyle.Fill };
             parent.Controls.Add(tabs);
+            TabPage overviewTab = new("Overview");
+            PageLayout.ScrollableChart(overviewTab, overview, () => (int)overview.RowStyles[0].Height + overview.LogicalToDeviceUnits(320));
+            tabs.TabPages.Add(overviewTab);
+
             TabPage projectionTab = new("Projection");
             tabs.TabPages.Add(projectionTab);
             ConfigureProjectionGrid();
@@ -300,21 +323,34 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task RefreshAsync()
         {
-            IReadOnlyList<Account> accounts = await _runwayService.GetAccountsAsync().ConfigureAwait(true);
-            IReadOnlyList<RecurringBill> bills = await _runwayService.GetBillsAsync().ConfigureAwait(true);
+            if (!IsPageActive)
+            {
+                return;
+            }
 
-            RunwayAnalysisResult result = new RunwayCalculator().Calculate(
-                accounts,
-                bills,
-                Convert.ToString(_scenario.SelectedItem) ?? "Strict",
-                _monthlyIncome.Value,
-                decimal.ToInt32(_projectionMonths.Value),
-                DateOnly.FromDateTime(DateTime.Today));
+            string scenario = Convert.ToString(_scenario.SelectedItem) ?? "Strict";
+            decimal monthlyIncome = _monthlyIncome.Value;
+            int projectionMonths = decimal.ToInt32(_projectionMonths.Value);
+            DateOnly asOfDate = DateOnly.FromDateTime(DateTime.Today);
 
+            await LoadLatestAsync("runway", "Loading balances and recurring bills...", async cancellationToken =>
+            {
+                Task<IReadOnlyList<Account>> accountsTask = _runwayService.GetAccountsAsync(cancellationToken);
+                Task<IReadOnlyList<RecurringBill>> billsTask = _runwayService.GetBillsAsync(cancellationToken);
+                await Task.WhenAll(accountsTask, billsTask).ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                IReadOnlyList<Account> accounts = await accountsTask.ConfigureAwait(false);
+                IReadOnlyList<RecurringBill> bills = await billsTask.ConfigureAwait(false);
+                return new RunwayCalculator().Calculate(accounts, bills, scenario, monthlyIncome, projectionMonths, asOfDate);
+            }, ApplyAnalysis).ConfigureAwait(true);
+        }
+
+        private void ApplyAnalysis(RunwayAnalysisResult result)
+        {
             _availableBalanceMetric.Text = result.HasKnownBalance ? result.StartingAvailableBalance.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
             _monthlyBillsMetric.Text = result.MonthlyRequiredExpenses.ToString("C2", CultureInfo.CurrentCulture);
             _monthlyBurnMetric.Text = result.MonthlyNetBurn.ToString("C2", CultureInfo.CurrentCulture);
-            _monthlyBurnMetric.ForeColor = result.MonthlyNetBurn > 0M ? Color.FromArgb(220, 38, 38) : UiTheme.Success;
+            UiTheme.SetTextRole(_monthlyBurnMetric, result.MonthlyNetBurn > 0M ? "DangerText" : "SuccessText");
             _depletionMetric.Text = !result.HasCompleteInputs ? "Incomplete inputs" : result.EstimatedDepletionDate.HasValue ? result.EstimatedDepletionDate.Value.ToString("MMM d, yyyy", CultureInfo.CurrentCulture) : "Beyond range";
             _projectionSource.DataSource = result.ProjectionPoints;
             _billSource.DataSource = result.IncludedBills;
@@ -399,8 +435,8 @@ namespace PersonalFinanceManager.App.UI.Views
 
             private static void DrawGrid(Graphics graphics, Rectangle plot, decimal min, decimal max)
             {
-                using Pen axisPen = new(Color.FromArgb(194, 203, 217));
-                using Pen gridPen = new(Color.FromArgb(229, 234, 242)) { DashStyle = DashStyle.Dash };
+                using Pen axisPen = new(UiTheme.TextMuted);
+                using Pen gridPen = new(UiTheme.GridLine) { DashStyle = DashStyle.Dash };
                 using Font labelFont = new("Segoe UI", 8F, FontStyle.Regular);
                 using Brush labelBrush = new SolidBrush(UiTheme.TextSecondary);
                 using StringFormat right = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };

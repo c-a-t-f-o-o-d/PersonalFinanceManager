@@ -1,10 +1,11 @@
+using PersonalFinanceManager.App.UI.Styling;
 using System.Globalization;
 using PersonalFinanceManager.Core.Common;
 using PersonalFinanceManager.Core.Models;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class AccountEditForm : Form
+    public sealed class AccountEditForm : ThemedForm
     {
         private readonly Dictionary<string, Control> _fields = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, Field> _definitions = new(StringComparer.OrdinalIgnoreCase);
@@ -229,7 +230,8 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            control.BackColor = Color.FromArgb(255, 248, 220);
+            control.Tag = "WarningInput";
+            control.BackColor = UiTheme.WarningBackground;
 
             if (control is TextBox textBox)
             {

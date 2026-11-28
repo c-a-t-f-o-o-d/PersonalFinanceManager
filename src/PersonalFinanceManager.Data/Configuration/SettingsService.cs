@@ -1,5 +1,6 @@
 using PersonalFinanceManager.Core.Application;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 
 namespace PersonalFinanceManager.Data.Configuration
@@ -13,7 +14,18 @@ namespace PersonalFinanceManager.Data.Configuration
             WriteIndented = true
         };
 
-        public string ConfigurationDirectory { get; } = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ApplicationIdentity.LocalApplicationDataFolderName);
+        public SettingsService()
+            : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), ApplicationIdentity.LocalApplicationDataFolderName))
+        {
+        }
+
+        public SettingsService(string configurationDirectory)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(configurationDirectory);
+            ConfigurationDirectory = Path.GetFullPath(configurationDirectory);
+        }
+
+        public string ConfigurationDirectory { get; }
         public string UserSettingsPath => Path.Combine(ConfigurationDirectory, "appsettings.Local.json");
 
         public AppSettings Load()
@@ -47,6 +59,24 @@ namespace PersonalFinanceManager.Data.Configuration
             File.Move(tempPath, UserSettingsPath, true);
         }
 
+        public void SaveAppearancePreference(bool useDarkMode)
+        {
+            if (!File.Exists(UserSettingsPath))
+            {
+                AppSettings settings = LoadDefaults();
+                settings.UseDarkMode = useDarkMode;
+                Save(settings);
+                return;
+            }
+
+            JsonObject document = JsonNode.Parse(File.ReadAllText(UserSettingsPath)) as JsonObject
+                ?? throw new InvalidDataException("The settings file must contain a JSON object.");
+            document["useDarkMode"] = useDarkMode;
+            string tempPath = UserSettingsPath + ".tmp";
+            File.WriteAllText(tempPath, document.ToJsonString(_jsonOptions));
+            File.Move(tempPath, UserSettingsPath, true);
+        }
+
         private static AppSettings LoadDefaults()
         {
             string path = Path.Combine(AppContext.BaseDirectory, "appsettings.json");
@@ -67,7 +97,8 @@ namespace PersonalFinanceManager.Data.Configuration
                 BackupFolder = settings.BackupFolder,
                 ConnectionProfileName = settings.ConnectionProfileName,
                 DefaultImportFolder = settings.DefaultImportFolder,
-                MaskAccountNumbers = settings.MaskAccountNumbers
+                MaskAccountNumbers = settings.MaskAccountNumbers,
+                UseDarkMode = settings.UseDarkMode
             };
 
             if (!string.IsNullOrWhiteSpace(settings.ConnectionString))

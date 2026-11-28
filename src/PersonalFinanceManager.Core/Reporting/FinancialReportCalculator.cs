@@ -197,12 +197,20 @@ public sealed class FinancialReportCalculator
             warnings.Add("No active required bills define this spending basis. Add the required bills before estimating salary.");
         }
 
-        bool unresolvedOverlap = false;
+        IReadOnlyList<string> billIdentityWarnings = RecurringBillMatcher.OverlapWarnings(bills);
+        warnings.AddRange(billIdentityWarnings);
+        bool unresolvedOverlap = billIdentityWarnings.Count > 0;
 
         if (useBills && useHistory)
         {
             foreach (RecurringBill bill in bills)
             {
+                if (expenses.Any(item => RecurringBillMatcher.MatchesStatementDescription(item, bill) && !SameBucket(item, bill)))
+                {
+                    unresolvedOverlap = true;
+                    warnings.Add($"Review classification for '{bill.BillName}': an exact payment description has a different category or category type. Correct its classification before combining history with this bill.");
+                }
+
                 ExpenseDetailItem[] bucket = expenses.Where(item => SameBucket(item, bill)).ToArray();
 
                 if (bucket.Length > 0 && !bucket.Any(item => MatchesBill(item, bill)))
@@ -210,6 +218,12 @@ public sealed class FinancialReportCalculator
                     unresolvedOverlap = true;
                     warnings.Add($"Review overlap for '{bill.BillName}': its spending bucket is selected, but no exact payee/source match identifies the historical bill. Deselect that bucket or correct the bill's payee/source description.");
                 }
+            }
+
+            if (expenses.Any(item => bills.Count(bill => MatchesBill(item, bill)) > 1))
+            {
+                unresolvedOverlap = true;
+                warnings.Add("A historical payment matches more than one required bill. Resolve the overlapping identities before estimating salary.");
             }
 
             expenses = expenses.Where(item => !bills.Any(bill => MatchesBill(item, bill))).ToArray();
@@ -532,14 +546,12 @@ public sealed class FinancialReportCalculator
 
     private static bool SameBucket(ExpenseDetailItem item, RecurringBill bill)
     {
-        return (!bill.AccountId.HasValue || item.AccountId == bill.AccountId) && Equal(item.Category, bill.Category) && Equal(item.SpendingClass, bill.SpendingClass);
+        return RecurringBillMatcher.SameBucket(item, bill);
     }
 
     private static bool MatchesBill(ExpenseDetailItem item, RecurringBill bill)
     {
-        return SameBucket(item, bill) && (!string.IsNullOrWhiteSpace(bill.SourceDescription)
-            ? Equal(item.Description, bill.SourceDescription)
-            : !string.IsNullOrWhiteSpace(bill.Payee) && (Equal(item.Merchant, bill.Payee) || Equal(item.Description, bill.Payee)));
+        return RecurringBillMatcher.Matches(item, bill);
     }
 
     private static bool SelectedBucket(ExpenseDetailItem item, SalarySpendingFilter filter)

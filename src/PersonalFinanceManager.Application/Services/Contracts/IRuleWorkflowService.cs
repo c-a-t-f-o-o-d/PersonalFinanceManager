@@ -7,6 +7,10 @@ namespace PersonalFinanceManager.Application.Services.Contracts
     {
         Task<IReadOnlyList<FinancialRule>> GetRulesAsync(CancellationToken cancellationToken = default);
 
+        Task<IReadOnlyList<string>> GetCategoryValuesAsync(CancellationToken cancellationToken = default);
+
+        Task<IReadOnlyList<string>> GetCategoryTypeValuesAsync(CancellationToken cancellationToken = default);
+
         Task<int> SaveRuleAsync(FinancialRule rule, CancellationToken cancellationToken = default);
 
         Task DeleteRuleAsync(int ruleId, CancellationToken cancellationToken = default);

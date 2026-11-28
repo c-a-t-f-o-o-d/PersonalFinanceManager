@@ -66,8 +66,16 @@ public sealed class RunwayCalculator
 
         Dictionary<DateOnly, decimal> scheduledExpenses = new();
         decimal unscheduledMonthly = 0M;
+        RecurringBill[] requiredBills = bills.Where(BillSchedule.IsRequiredExpense).ToArray();
+        IReadOnlyList<string> billIdentityWarnings = RecurringBillMatcher.OverlapWarnings(requiredBills);
+        warnings.AddRange(billIdentityWarnings);
 
-        foreach (RecurringBill bill in bills.Where(BillSchedule.IsRequiredExpense))
+        if (billIdentityWarnings.Count > 0)
+        {
+            result.HasCompleteInputs = false;
+        }
+
+        foreach (RecurringBill bill in requiredBills)
         {
             if (bill.TypicalAmount <= 0M)
             {

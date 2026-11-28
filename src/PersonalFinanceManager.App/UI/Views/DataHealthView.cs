@@ -5,7 +5,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class DataHealthView : UserControl, IPageLayoutControl
+    public sealed class DataHealthView : AsyncPageControl, IPageLayoutControl
     {
         private readonly BindingSource _bindingSource = new();
         private readonly DataGridView _grid = new();
@@ -23,6 +23,12 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
             await RefreshAsync().ConfigureAwait(true);
         }
 
@@ -106,12 +112,17 @@ namespace PersonalFinanceManager.App.UI.Views
             _grid.Columns.Add(MakeFillColumn(nameof(DataHealthCheckResult.Recommendation), "Recommendation", 420));
             gridCard.Controls.Add(_grid);
             UiTheme.StyleGrid(_grid);
+            PageLayout.AutoSizeHeaders(root, 0, 1);
             UiTheme.ApplyTo(this);
         }
 
-        private async Task RefreshAsync()
+        private Task RefreshAsync()
         {
-            IReadOnlyList<DataHealthCheckResult> results = await _dataHealthService.GetChecksAsync().ConfigureAwait(true);
+            return LoadLatestAsync("checks", "Loading data health checks...", token => _dataHealthService.GetChecksAsync(token), ApplyChecks);
+        }
+
+        private void ApplyChecks(IReadOnlyList<DataHealthCheckResult> results)
+        {
             _bindingSource.DataSource = results;
             int warnings = 0;
 
@@ -133,7 +144,15 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            IReadOnlyList<DataHealthDetailRow> rows = await _dataHealthService.GetDetailsAsync(selected.IssueCode).ConfigureAwait(true);
+            IReadOnlyList<DataHealthDetailRow>? rows = null;
+            await LoadLatestAsync("details", "Loading check details...",
+                token => _dataHealthService.GetDetailsAsync(selected.IssueCode, token), result => rows = result).ConfigureAwait(true);
+
+            if (!IsPageActive || rows is null)
+            {
+                return;
+            }
+
             using DataHealthDetailForm form = new(selected, rows);
             form.ShowDialog(this);
         }
@@ -152,6 +171,12 @@ namespace PersonalFinanceManager.App.UI.Views
             }
 
             int affected = await _dataHealthService.SyncTransactionOwnersFromAccountsAsync().ConfigureAwait(true);
+
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             MessageBox.Show(this, $"Updated {affected} owner field value(s).", "Sync complete", MessageBoxButtons.OK, MessageBoxIcon.Information);
             await RefreshAsync().ConfigureAwait(true);
         }
@@ -171,11 +196,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
             if (string.Equals(result.Severity, "Warning", StringComparison.OrdinalIgnoreCase))
             {
-                e.CellStyle.ForeColor = Color.FromArgb(185, 28, 28);
+                e.CellStyle.ForeColor = UiTheme.Danger;
             }
             else
             {
-                e.CellStyle.ForeColor = Color.FromArgb(29, 78, 216);
+                e.CellStyle.ForeColor = UiTheme.Accent;
             }
         }
 

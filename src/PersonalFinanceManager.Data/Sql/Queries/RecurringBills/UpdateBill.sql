@@ -12,9 +12,12 @@ SET AccountId = @AccountId,
     IsRequired = @IsRequired,
     IsActive = @IsActive,
     SourceDescription = @SourceDescription,
+    PayeeAliasesJson = @PayeeAliasesJson,
+    SourceDescriptionAliasesJson = @SourceDescriptionAliasesJson,
     FirstSeenDate = @FirstSeenDate,
     LastSeenDate = @LastSeenDate,
     TransactionCount = @TransactionCount,
     Notes = @Notes,
     UpdatedAtUtc = SYSUTCDATETIME()
-WHERE RecurringBillId = @RecurringBillId;
+OUTPUT INSERTED.[RowVersion]
+WHERE RecurringBillId = @RecurringBillId AND [RowVersion] = @RowVersion;

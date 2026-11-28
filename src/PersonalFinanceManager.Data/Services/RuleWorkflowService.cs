@@ -21,6 +21,16 @@ namespace PersonalFinanceManager.Data.Services
             return _ruleRepository.GetAllAsync(cancellationToken);
         }
 
+        public Task<IReadOnlyList<string>> GetCategoryValuesAsync(CancellationToken cancellationToken = default)
+        {
+            return _ruleRepository.GetCategoryValuesAsync(cancellationToken);
+        }
+
+        public Task<IReadOnlyList<string>> GetCategoryTypeValuesAsync(CancellationToken cancellationToken = default)
+        {
+            return _ruleRepository.GetCategoryTypeValuesAsync(cancellationToken);
+        }
+
         public Task<int> SaveRuleAsync(FinancialRule rule, CancellationToken cancellationToken = default)
         {
             return _ruleRepository.SaveAsync(rule, cancellationToken);

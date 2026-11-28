@@ -1,9 +1,10 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class AccountsView : UserControl, IPageLayoutControl
+    public sealed class AccountsView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IAccountWorkflowService _accountService;
         private readonly BindingSource _bindingSource = new();
@@ -20,6 +21,12 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
             await LoadAccountsAsync().ConfigureAwait(true);
         }
 
@@ -88,6 +95,7 @@ namespace PersonalFinanceManager.App.UI.Views
             AddColumn("NextPaymentDueDate", "Next Due", 100);
             AddColumn("NextPaymentAmount", "Next Payment", 110, "C2");
             root.Controls.Add(_grid, 0, 1);
+            PageLayout.AutoSizeHeaders(root, 0);
         }
 
         private void AddColumn(string property, string header, int width, string? format = null)
@@ -107,10 +115,9 @@ namespace PersonalFinanceManager.App.UI.Views
             _grid.Columns.Add(column);
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            IReadOnlyList<Account> accounts = await _accountService.GetAccountsAsync().ConfigureAwait(true);
-            _bindingSource.DataSource = accounts;
+            return LoadLatestAsync("accounts", "Loading accounts...", token => _accountService.GetAccountsAsync(token), accounts => _bindingSource.DataSource = accounts);
         }
 
         private async Task AddAsync()
@@ -133,9 +140,11 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            Account? full = await _accountService.GetAccountForEditAsync(selected.AccountId).ConfigureAwait(true);
+            Account? full = null;
+            await LoadLatestAsync("account-details", "Loading account details...",
+                token => _accountService.GetAccountForEditAsync(selected.AccountId, token), account => full = account).ConfigureAwait(true);
 
-            if (full is null)
+            if (!IsPageActive || full is null)
             {
                 return;
             }

@@ -8,7 +8,7 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class MoneyInOutView : UserControl, IPageLayoutControl
+    public sealed class MoneyInOutView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IAnalysisService _analysisService;
         private readonly ComboBox _accountFilter = new();
@@ -26,12 +26,14 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly DataGridView _detailGrid = new();
         private readonly BindingSource _monthlySource = new();
         private readonly BindingSource _detailSource = new();
-        private IReadOnlyList<Account> _accounts = Array.Empty<Account>();
 
         public MoneyInOutView(IAnalysisService analysisService)
         {
             _analysisService = analysisService;
             InitializeLayout();
+            BindAccounts(Array.Empty<Account>());
+            DateTime today = DateTime.Today;
+            SetDateRange(new DateTime(today.Year, today.Month, 1).AddMonths(-11), today);
         }
 
         public int PreferredPageHeight => 1150;
@@ -39,8 +41,13 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await LoadAccountsAsync().ConfigureAwait(true);
-            await SetLast12MonthsAsync().ConfigureAwait(true);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
+            await Task.WhenAll(LoadAccountsAsync(), RefreshAsync()).ConfigureAwait(true);
         }
 
         private void InitializeLayout()
@@ -50,14 +57,12 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 4,
+                RowCount = 2,
                 BackColor = UiTheme.AppBackground
             };
 
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 148));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 45));
-            root.RowStyles.Add(new RowStyle(SizeType.Percent, 55));
+            root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             Controls.Add(root);
 
             CardPanel filterCard = new()
@@ -69,6 +74,18 @@ namespace PersonalFinanceManager.App.UI.Views
 
             root.Controls.Add(filterCard, 0, 0);
             BuildFilterCard(filterCard);
+
+            TableLayoutPanel overview = new()
+            {
+                ColumnCount = 1,
+                RowCount = 2,
+                BackColor = UiTheme.AppBackground,
+                Margin = Padding.Empty
+            };
+
+            overview.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            overview.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
+            overview.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
             TableLayoutPanel metricRow = new()
             {
@@ -83,11 +100,12 @@ namespace PersonalFinanceManager.App.UI.Views
                 metricRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
             }
 
-            root.Controls.Add(metricRow, 0, 1);
+            overview.Controls.Add(metricRow, 0, 0);
             metricRow.Controls.Add(BuildMetricCard("Money In", _moneyInMetric), 0, 0);
             metricRow.Controls.Add(BuildMetricCard("Money Out", _moneyOutMetric), 1, 0);
             metricRow.Controls.Add(BuildMetricCard("Net Cash Flow", _netMetric), 2, 0);
             metricRow.Controls.Add(BuildMetricCard("Avg Net / Month", _averageNetMetric), 3, 0);
+            PageLayout.ResponsiveMetrics(overview, 0, metricRow, 2, 850);
 
             CardPanel chartCard = new()
             {
@@ -96,8 +114,9 @@ namespace PersonalFinanceManager.App.UI.Views
                 Padding = new Padding(16)
             };
 
-            root.Controls.Add(chartCard, 0, 2);
             BuildChartCard(chartCard);
+
+            overview.Controls.Add(chartCard, 0, 1);
 
             CardPanel gridCard = new()
             {
@@ -105,8 +124,9 @@ namespace PersonalFinanceManager.App.UI.Views
                 Padding = new Padding(12)
             };
 
-            root.Controls.Add(gridCard, 0, 3);
-            BuildGridTabs(gridCard);
+            root.Controls.Add(gridCard, 0, 1);
+            BuildGridTabs(gridCard, overview);
+            PageLayout.AutoSizeHeaders(root, 0);
             UiTheme.ApplyTo(this);
         }
 
@@ -152,7 +172,7 @@ namespace PersonalFinanceManager.App.UI.Views
             filters.Controls.Add(_maxRows);
             Button refresh = new() { Text = "Refresh", Width = 94, Height = 30 };
             UiTheme.StylePrimaryButton(refresh);
-            refresh.Click += async (_, _) => await RefreshAsync().ConfigureAwait(true);
+            refresh.Click += async (_, _) => await Task.WhenAll(LoadAccountsAsync(), RefreshAsync()).ConfigureAwait(true);
             filters.Controls.Add(refresh);
 
             FlowLayoutPanel ranges = new()
@@ -213,10 +233,14 @@ namespace PersonalFinanceManager.App.UI.Views
             layout.Controls.Add(_chart, 0, 2);
         }
 
-        private void BuildGridTabs(Control parent)
+        private void BuildGridTabs(Control parent, TableLayoutPanel overview)
         {
             TabControl tabs = new() { Dock = DockStyle.Fill };
             parent.Controls.Add(tabs);
+            TabPage overviewTab = new("Overview");
+            PageLayout.ScrollableChart(overviewTab, overview, () => (int)overview.RowStyles[0].Height + overview.LogicalToDeviceUnits(320));
+            tabs.TabPages.Add(overviewTab);
+
             TabPage monthlyTab = new("Monthly Summary");
             tabs.TabPages.Add(monthlyTab);
             ConfigureMonthlyGrid();
@@ -318,14 +342,20 @@ namespace PersonalFinanceManager.App.UI.Views
             return column;
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            _accounts = await _analysisService.GetAccountsAsync().ConfigureAwait(true);
+            return LoadLatestAsync("accounts", "Loading account options...", _analysisService.GetAccountsAsync, BindAccounts);
+        }
+
+        private void BindAccounts(IReadOnlyList<Account> accounts)
+        {
+            int? selectedAccountId = (_accountFilter.SelectedItem as AccountOption)?.AccountId;
             List<AccountOption> options = new() { new AccountOption(null, "All Cash Accounts") };
-            options.AddRange(_accounts.Where(account => AccountClassification.IsCash(account.AccountType)).Select(account => new AccountOption(account.AccountId, account.DisplayName)));
-            _accountFilter.DataSource = options;
+            options.AddRange(accounts.Where(account => AccountClassification.IsCash(account.AccountType)).Select(account => new AccountOption(account.AccountId, account.DisplayName)));
             _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
             _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            _accountFilter.DataSource = options;
+            _accountFilter.SelectedItem = options.FirstOrDefault(option => option.AccountId == selectedAccountId) ?? options[0];
         }
 
         private async Task SetCurrentMonthAsync()
@@ -373,6 +403,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task RefreshAsync()
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             ExpenseReportFilter filter = BuildFilter();
 
             if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
@@ -381,7 +416,12 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            CashFlowReportResult report = await _analysisService.GetCashFlowReportAsync(filter).ConfigureAwait(true);
+            await LoadLatestAsync("report", "Loading cash flow...",
+                cancellationToken => _analysisService.GetCashFlowReportAsync(filter, cancellationToken), ApplyReport).ConfigureAwait(true);
+        }
+
+        private void ApplyReport(CashFlowReportResult report)
+        {
             MoneyInOutSummary summary = report.Summary;
             IReadOnlyList<MoneyInOutMonthlyItem> monthly = report.Monthly;
             IReadOnlyList<MoneyInOutDetailItem> details = report.Details;
@@ -391,17 +431,17 @@ namespace PersonalFinanceManager.App.UI.Views
             _moneyInMetric.Text = summary.TotalMoneyIn.ToString("C2", CultureInfo.CurrentCulture);
             _moneyOutMetric.Text = summary.TotalMoneyOut.ToString("C2", CultureInfo.CurrentCulture);
             _netMetric.Text = summary.NetCashFlow.ToString("C2", CultureInfo.CurrentCulture);
-            _netMetric.ForeColor = summary.NetCashFlow >= 0M ? UiTheme.Success : Color.FromArgb(220, 38, 38);
+            UiTheme.SetTextRole(_netMetric, summary.NetCashFlow >= 0M ? "SuccessText" : "DangerText");
             decimal averageNet = report.Period.MonthEquivalent > 0M ? summary.NetCashFlow / report.Period.MonthEquivalent : 0M;
             _averageNetMetric.Text = report.Period.HasObservedTransactions ? averageNet.ToString("C2", CultureInfo.CurrentCulture) : "Unknown";
-            _averageNetMetric.ForeColor = averageNet >= 0M ? UiTheme.Success : Color.FromArgb(220, 38, 38);
+            UiTheme.SetTextRole(_averageNetMetric, averageNet >= 0M ? "SuccessText" : "DangerText");
 
             _periodLabel.Text = report.Period.HasObservedTransactions
                 ? $"{report.Period.FromDate:MMM d, yyyy} - {report.Period.ToDate:MMM d, yyyy} | {report.Period.MonthCount} calendar months | Import coverage unverified"
                 : report.Period.CoverageNote;
 
             _reviewNotes.Lines = report.Warnings.Append(report.Period.CoverageNote).ToArray();
-            _periodLabel.ForeColor = report.Warnings.Count > 0 ? Color.DarkOrange : UiTheme.TextSecondary;
+            UiTheme.SetTextRole(_periodLabel, report.Warnings.Count > 0 ? "WarningText" : "SecondaryText");
 
             if (report.Warnings.Count > 0)
             {
@@ -506,8 +546,8 @@ namespace PersonalFinanceManager.App.UI.Views
                 for (int index = 0; index < _items.Count; index++)
                 {
                     MoneyInOutMonthlyItem item = _items[index];
-                    DrawSingleBar(graphics, plot, x, barWidth, item.MoneyIn, max, Color.FromArgb(22, 163, 74));
-                    DrawSingleBar(graphics, plot, x + barWidth + 3, barWidth, item.MoneyOut, max, Color.FromArgb(220, 38, 38));
+                    DrawSingleBar(graphics, plot, x, barWidth, item.MoneyIn, max, UiTheme.Success);
+                    DrawSingleBar(graphics, plot, x + barWidth + 3, barWidth, item.MoneyOut, max, UiTheme.Danger);
                     string label = item.MonthStart.ToString("MMM", CultureInfo.CurrentCulture) + Environment.NewLine + item.MonthStart.ToString("yyyy", CultureInfo.CurrentCulture);
                     Rectangle labelBounds = new(x - 28, plot.Bottom + 6, barWidth * 2 + 60, 38);
                     using Brush labelBrush = new SolidBrush(UiTheme.TextPrimary);
@@ -522,14 +562,14 @@ namespace PersonalFinanceManager.App.UI.Views
                 Rectangle bar = new(x, plot.Bottom - height, width, Math.Max(1, height));
                 using LinearGradientBrush brush = new(bar, Lighten(color, 0.18F), color, LinearGradientMode.Vertical);
                 graphics.FillRectangle(brush, bar);
-                using Pen outline = new(Color.FromArgb(190, 199, 214));
+                using Pen outline = new(UiTheme.CardBorder);
                 graphics.DrawRectangle(outline, bar);
             }
 
             private static void DrawGrid(Graphics graphics, Rectangle plot, decimal max)
             {
-                using Pen axisPen = new(Color.FromArgb(194, 203, 217));
-                using Pen gridPen = new(Color.FromArgb(229, 234, 242)) { DashStyle = DashStyle.Dash };
+                using Pen axisPen = new(UiTheme.TextMuted);
+                using Pen gridPen = new(UiTheme.GridLine) { DashStyle = DashStyle.Dash };
                 using Font labelFont = new("Segoe UI", 8F, FontStyle.Regular);
                 using Brush labelBrush = new SolidBrush(UiTheme.TextSecondary);
                 using StringFormat right = new() { Alignment = StringAlignment.Far, LineAlignment = StringAlignment.Center };
@@ -548,8 +588,8 @@ namespace PersonalFinanceManager.App.UI.Views
 
             private static void DrawLegend(Graphics graphics, Rectangle bounds)
             {
-                using Brush inBrush = new SolidBrush(Color.FromArgb(22, 163, 74));
-                using Brush outBrush = new SolidBrush(Color.FromArgb(220, 38, 38));
+                using Brush inBrush = new SolidBrush(UiTheme.Success);
+                using Brush outBrush = new SolidBrush(UiTheme.Danger);
                 using Brush textBrush = new SolidBrush(UiTheme.TextPrimary);
                 graphics.FillRectangle(inBrush, bounds.Left, bounds.Top + 5, 12, 12);
                 graphics.DrawString("Money In", UiTheme.SmallFont, textBrush, bounds.Left + 18, bounds.Top + 2);

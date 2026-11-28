@@ -2,7 +2,7 @@ SET XACT_ABORT ON;
 
 IF EXISTS (SELECT 1 FROM dbo.Account)
     OR EXISTS (SELECT 1 FROM dbo.ImportedTransaction)
-    OR EXISTS (SELECT 1 FROM dbo.FinancialRule)
+    OR EXISTS (SELECT 1 FROM dbo.FinancialRule WHERE StarterRuleCode IS NULL)
     OR EXISTS (SELECT 1 FROM dbo.RecurringBill)
 BEGIN
     THROW 51001, 'Demo data can only be loaded into an empty PersonalFinanceManager database.', 1;

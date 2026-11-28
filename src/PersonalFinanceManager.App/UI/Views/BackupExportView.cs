@@ -1,10 +1,11 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManagerIdentity = PersonalFinanceManager.Core.Application.ApplicationIdentity;
 using PersonalFinanceManager.Data.Configuration;
 using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class BackupExportView : UserControl, IPageLayoutControl
+    public sealed class BackupExportView : AsyncPageControl, IPageLayoutControl
     {
         private readonly AppSettings _settings;
         private readonly IDatabaseBackupService _backupService;
@@ -27,6 +28,11 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
 
             _folder.Text = string.IsNullOrWhiteSpace(_settings.BackupFolder)
                 ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), PersonalFinanceManagerIdentity.ProductName + " Backups")
@@ -70,6 +76,7 @@ namespace PersonalFinanceManager.App.UI.Views
             root.Controls.Add(_status, 0, 1);
             ConfigureHistoryGrid();
             root.Controls.Add(_historyGrid, 0, 2);
+            PageLayout.AutoSizeHeaders(root, 0);
         }
 
         private static Label MakeLabel(string text, int width)
@@ -142,13 +149,38 @@ namespace PersonalFinanceManager.App.UI.Views
                 UseWaitCursor = true;
                 SaveFolder();
                 var result = await _backupService.CreateSqlBackupAsync(_folder.Text.Trim()).ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    if (!result.Succeeded)
+                    {
+                        throw new InvalidOperationException(result.Message);
+                    }
+
+                    return;
+                }
+
                 _status.Text = result.Message + " " + result.FilePath;
                 await RefreshHistoryAsync().ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    if (!result.Succeeded)
+                    {
+                        throw new InvalidOperationException(result.Message);
+                    }
+
+                    return;
+                }
+
                 MessageBox.Show(this, result.Message + Environment.NewLine + result.FilePath, "Backup", MessageBoxButtons.OK, result.Succeeded ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
             }
             finally
             {
-                UseWaitCursor = false;
+                if (IsPageActive)
+                {
+                    UseWaitCursor = false;
+                }
             }
         }
 
@@ -160,19 +192,44 @@ namespace PersonalFinanceManager.App.UI.Views
                 UseWaitCursor = true;
                 SaveFolder();
                 var result = await _backupService.ExportDataZipAsync(_folder.Text.Trim()).ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    if (!result.Succeeded)
+                    {
+                        throw new InvalidOperationException(result.Message);
+                    }
+
+                    return;
+                }
+
                 _status.Text = result.Message + " " + result.FilePath;
                 await RefreshHistoryAsync().ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    if (!result.Succeeded)
+                    {
+                        throw new InvalidOperationException(result.Message);
+                    }
+
+                    return;
+                }
+
                 MessageBox.Show(this, result.Message + Environment.NewLine + result.FilePath, "Export", MessageBoxButtons.OK, result.Succeeded ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
             }
             finally
             {
-                UseWaitCursor = false;
+                if (IsPageActive)
+                {
+                    UseWaitCursor = false;
+                }
             }
         }
 
-        private async Task RefreshHistoryAsync()
+        private Task RefreshHistoryAsync()
         {
-            _historySource.DataSource = await _backupService.GetHistoryAsync().ConfigureAwait(true);
+            return LoadLatestAsync("history", "Loading backup history...", token => _backupService.GetHistoryAsync(token), history => _historySource.DataSource = history);
         }
     }
 }

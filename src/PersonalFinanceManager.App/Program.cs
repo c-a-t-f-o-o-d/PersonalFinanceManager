@@ -1,4 +1,5 @@
 using PersonalFinanceManager.App.UI;
+using PersonalFinanceManager.App.UI.Styling;
 using PersonalFinanceManagerIdentity = PersonalFinanceManager.Core.Application.ApplicationIdentity;
 using PersonalFinanceManager.Data.Configuration;
 using PersonalFinanceManager.Data.Logging;
@@ -23,6 +24,7 @@ namespace PersonalFinanceManager.App
             };
 
             SettingsService settingsService = new();
+            UiTheme.SetDarkMode(settingsService.Load().UseDarkMode);
             System.Windows.Forms.Application.Run(new MainForm(settingsService, logger));
         }
 

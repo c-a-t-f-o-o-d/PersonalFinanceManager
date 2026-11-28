@@ -1,9 +1,10 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.Core.Models;
 using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class TransactionsView : UserControl, IPageLayoutControl
+    public sealed class TransactionsView : AsyncPageControl, IPageLayoutControl
     {
         private readonly ITransactionWorkflowService _transactionWorkflowService;
         private readonly BindingSource _bindingSource = new();
@@ -23,7 +24,11 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly ComboBox _quickCategoryType = new();
         private readonly ComboBox _quickRuleMode = new();
         private readonly DataGridView _grid = new();
+        private readonly List<Button> _mutationButtons = new();
+        private bool _mutationInProgress;
         private IReadOnlyList<Account> _accounts = Array.Empty<Account>();
+        private Task _accountsLoadTask = Task.CompletedTask;
+        private bool _accountsLoaded;
         private IReadOnlyList<string> _categories = Array.Empty<string>();
         private IReadOnlyList<string> _categoryTypes = Array.Empty<string>();
 
@@ -38,9 +43,13 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await LoadAccountsAsync().ConfigureAwait(true);
-            await LoadCategoryOptionsAsync().ConfigureAwait(true);
-            await LoadTransactionsAsync().ConfigureAwait(true);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
+            await Task.WhenAll(LoadAccountsAsync(), LoadCategoryOptionsAsync(), LoadTransactionsAsync()).ConfigureAwait(true);
         }
 
         private void InitializeLayout()
@@ -68,6 +77,7 @@ namespace PersonalFinanceManager.App.UI.Views
             Button delete = new() { Text = "Delete", Width = 90 };
             delete.Click += async (_, _) => await DeleteAsync().ConfigureAwait(true);
             commandRow.Controls.Add(delete);
+            _mutationButtons.AddRange([add, edit, delete]);
             Button refresh = new() { Text = "Refresh", Width = 90 };
             refresh.Click += async (_, _) => await RefreshAsync().ConfigureAwait(true);
             commandRow.Controls.Add(refresh);
@@ -82,6 +92,9 @@ namespace PersonalFinanceManager.App.UI.Views
             filterRow1.Controls.Add(MakeLabel("Account", 60));
             _accountFilter.DropDownStyle = ComboBoxStyle.DropDownList;
             _accountFilter.Width = 260;
+            _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
+            _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            _accountFilter.DataSource = new List<AccountOption> { new(null, "All Accounts") };
             filterRow1.Controls.Add(_accountFilter);
             filterRow1.Controls.Add(MakeLabel("From", 42));
             ConfigureDatePicker(_fromDate);
@@ -144,6 +157,7 @@ namespace PersonalFinanceManager.App.UI.Views
             Button createRule = new() { Text = "Create Rule + Apply", Width = 155 };
             createRule.Click += async (_, _) => await CreateRuleAndApplyAsync().ConfigureAwait(true);
             quickRow.Controls.Add(createRule);
+            _mutationButtons.AddRange([applyCategory, createRule]);
             _grid.Dock = DockStyle.Fill;
             _grid.AutoGenerateColumns = false;
             _grid.AllowUserToAddRows = false;
@@ -168,6 +182,7 @@ namespace PersonalFinanceManager.App.UI.Views
             AddColumn("IsManual", "Manual", 70);
             AddColumn("Notes", "Notes", 220);
             root.Controls.Add(_grid, 0, 4);
+            PageLayout.AutoSizeHeaders(root, 0, 1, 2, 3);
         }
 
         private static Label MakeLabel(string text, int width)
@@ -223,24 +238,47 @@ namespace PersonalFinanceManager.App.UI.Views
             _grid.Columns.Add(column);
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            _accounts = await _transactionWorkflowService.GetAccountsAsync().ConfigureAwait(true);
-            List<AccountOption> options = new() { new AccountOption(null, "All Accounts") };
-            options.AddRange(_accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
-            _accountFilter.DataSource = options;
-            _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
-            _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            _accountsLoadTask = LoadLatestAsync("accounts", "Loading accounts...", _transactionWorkflowService.GetAccountsAsync, accounts =>
+            {
+                int? selectedAccountId = GetSelectedAccountId();
+                _accounts = accounts;
+                _accountsLoaded = true;
+                List<AccountOption> options = new() { new AccountOption(null, "All Accounts") };
+                options.AddRange(_accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
+                _accountFilter.DataSource = options;
+                _accountFilter.SelectedItem = options.FirstOrDefault(option => option.AccountId == selectedAccountId) ?? options[0];
+            });
+            return _accountsLoadTask;
         }
 
-        private async Task LoadCategoryOptionsAsync()
+        private async Task EnsureAccountsLoadedAsync()
         {
-            _categories = await _transactionWorkflowService.GetCategoryValuesAsync().ConfigureAwait(true);
-            _categoryTypes = await _transactionWorkflowService.GetCategoryTypeValuesAsync().ConfigureAwait(true);
-            LoadComboValues(_category, _categories);
-            LoadComboValues(_quickCategory, _categories);
-            LoadComboValues(_categoryType, _categoryTypes);
-            LoadComboValues(_quickCategoryType, _categoryTypes);
+            while (IsPageActive && !_accountsLoaded)
+            {
+                Task request = _accountsLoadTask.IsCompleted ? LoadAccountsAsync() : _accountsLoadTask;
+                await request.ConfigureAwait(true);
+            }
+        }
+
+        private Task LoadCategoryOptionsAsync()
+        {
+            return LoadLatestAsync("category-options", "Loading categories...", async cancellationToken =>
+            {
+                Task<IReadOnlyList<string>> categories = _transactionWorkflowService.GetCategoryValuesAsync(cancellationToken);
+                Task<IReadOnlyList<string>> categoryTypes = _transactionWorkflowService.GetCategoryTypeValuesAsync(cancellationToken);
+                await Task.WhenAll(categories, categoryTypes).ConfigureAwait(false);
+                return new CategoryOptions(await categories.ConfigureAwait(false), await categoryTypes.ConfigureAwait(false));
+            }, options =>
+            {
+                _categories = options.Categories;
+                _categoryTypes = options.CategoryTypes;
+                LoadComboValues(_category, _categories);
+                LoadComboValues(_quickCategory, _categories);
+                LoadComboValues(_categoryType, _categoryTypes);
+                LoadComboValues(_quickCategoryType, _categoryTypes);
+            });
         }
 
         private static void LoadComboValues(ComboBox comboBox, IReadOnlyList<string> values)
@@ -256,17 +294,23 @@ namespace PersonalFinanceManager.App.UI.Views
             comboBox.Text = current;
         }
 
-        private async Task RefreshAsync()
+        private Task RefreshAsync()
         {
-            await LoadCategoryOptionsAsync().ConfigureAwait(true);
-            await LoadTransactionsAsync().ConfigureAwait(true);
+            return Task.WhenAll(LoadAccountsAsync(), LoadCategoryOptionsAsync(), LoadTransactionsAsync());
         }
 
-        private async Task LoadTransactionsAsync()
+        private Task LoadTransactionsAsync()
         {
+            if (!IsPageActive)
+            {
+                return Task.CompletedTask;
+            }
+
             TransactionFilter filter = BuildFilter();
-            IReadOnlyList<ImportedTransaction> transactions = await _transactionWorkflowService.GetTransactionsAsync(filter).ConfigureAwait(true);
-            _bindingSource.DataSource = transactions;
+            return LoadLatestAsync("transactions", "Loading transactions...", cancellationToken => _transactionWorkflowService.GetTransactionsAsync(filter, cancellationToken), transactions =>
+            {
+                _bindingSource.DataSource = transactions;
+            });
         }
 
         private TransactionFilter BuildFilter()
@@ -290,6 +334,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task ClearFiltersAsync()
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             _accountFilter.SelectedIndex = 0;
             _fromDate.Checked = false;
             _toDate.Checked = false;
@@ -307,6 +356,11 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task ShowUncategorizedAsync()
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             _category.Text = string.Empty;
             _categoryType.Text = string.Empty;
             _uncategorizedOnly.Checked = true;
@@ -315,149 +369,309 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private async Task AddAsync()
         {
-            if (_accounts.Count == 0)
-            {
-                MessageBox.Show(this, "Add an account before adding transactions.", "Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            ImportedTransaction transaction = new()
-            {
-                AccountId = GetSelectedAccountId() ?? _accounts[0].AccountId,
-                TransactionDate = DateOnly.FromDateTime(DateTime.Today),
-                Type = "Withdrawal",
-                Description = "Manual transaction",
-                IsManual = true
-            };
-
-            using TransactionEditForm form = new(transaction, _accounts, _categories, _categoryTypes);
-
-            if (form.ShowDialog(this) != DialogResult.OK)
+            if (!TryBeginMutation())
             {
                 return;
             }
 
-            await _transactionWorkflowService.SaveTransactionAsync(form.Transaction).ConfigureAwait(true);
-            await RefreshAsync().ConfigureAwait(true);
+            try
+            {
+                await EnsureAccountsLoadedAsync().ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                if (_accounts.Count == 0)
+                {
+                    MessageBox.Show(this, "Add an account before adding transactions.", "Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                ImportedTransaction transaction = new()
+                {
+                    AccountId = GetSelectedAccountId() ?? _accounts[0].AccountId,
+                    TransactionDate = DateOnly.FromDateTime(DateTime.Today),
+                    Type = "Withdrawal",
+                    Description = "Manual transaction",
+                    IsManual = true
+                };
+
+                using TransactionEditForm form = new(transaction, _accounts, _categories, _categoryTypes);
+
+                if (form.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+
+                await _transactionWorkflowService.SaveTransactionAsync(form.Transaction).ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                await RefreshAsync().ConfigureAwait(true);
+            }
+            finally
+            {
+                EndMutation();
+            }
         }
 
         private async Task EditAsync()
         {
-            if (_bindingSource.Current is not ImportedTransaction selected)
+            if (!TryBeginMutation())
             {
                 return;
             }
 
-            ImportedTransaction? full = await _transactionWorkflowService.GetTransactionAsync(selected.ImportedTransactionId).ConfigureAwait(true);
-
-            if (full is null)
+            try
             {
-                MessageBox.Show(this, "The selected transaction no longer exists.", "Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                await LoadTransactionsAsync().ConfigureAwait(true);
-                return;
+                if (_bindingSource.Current is not ImportedTransaction selected)
+                {
+                    return;
+                }
+
+                await EnsureAccountsLoadedAsync().ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                ImportedTransaction? full = null;
+                bool loaded = false;
+                await LoadLatestAsync("transaction-detail", "Loading transaction details...", cancellationToken => _transactionWorkflowService.GetTransactionAsync(selected.ImportedTransactionId, cancellationToken), transaction =>
+                {
+                    full = transaction;
+                    loaded = true;
+                }).ConfigureAwait(true);
+
+                if (!IsPageActive || !loaded)
+                {
+                    return;
+                }
+
+                if (full is null)
+                {
+                    MessageBox.Show(this, "The selected transaction no longer exists.", "Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    await LoadTransactionsAsync().ConfigureAwait(true);
+                    return;
+                }
+
+                using TransactionEditForm form = new(full, _accounts, _categories, _categoryTypes);
+
+                if (form.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+
+                await _transactionWorkflowService.SaveTransactionAsync(form.Transaction).ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                await RefreshAsync().ConfigureAwait(true);
             }
-
-            using TransactionEditForm form = new(full, _accounts, _categories, _categoryTypes);
-
-            if (form.ShowDialog(this) != DialogResult.OK)
+            finally
             {
-                return;
+                EndMutation();
             }
-
-            await _transactionWorkflowService.SaveTransactionAsync(form.Transaction).ConfigureAwait(true);
-            await RefreshAsync().ConfigureAwait(true);
         }
 
         private async Task DeleteAsync()
         {
-            if (_bindingSource.Current is not ImportedTransaction selected)
+            if (!TryBeginMutation())
             {
                 return;
             }
 
-            string message = $"Delete transaction '{selected.Description}' for {selected.Amount:C2} on {selected.TransactionDate}?";
-            DialogResult confirm = MessageBox.Show(this, message, "Delete Transaction", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
-
-            if (confirm != DialogResult.Yes)
+            try
             {
-                return;
-            }
+                if (_bindingSource.Current is not ImportedTransaction selected)
+                {
+                    return;
+                }
 
-            await _transactionWorkflowService.DeleteTransactionAsync(selected.ImportedTransactionId).ConfigureAwait(true);
-            await LoadTransactionsAsync().ConfigureAwait(true);
+                string message = $"Delete transaction '{selected.Description}' for {selected.Amount:C2} on {selected.TransactionDate}?";
+                DialogResult confirm = MessageBox.Show(this, message, "Delete Transaction", MessageBoxButtons.YesNo, MessageBoxIcon.Warning);
+
+                if (confirm != DialogResult.Yes)
+                {
+                    return;
+                }
+
+                await _transactionWorkflowService.DeleteTransactionAsync(selected.ImportedTransactionId).ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                await LoadTransactionsAsync().ConfigureAwait(true);
+            }
+            finally
+            {
+                EndMutation();
+            }
         }
 
         private async Task ApplyQuickCategorizationAsync()
         {
-            IReadOnlyList<ImportedTransaction> selected = GetSelectedTransactions();
-
-            if (selected.Count == 0)
+            if (!TryBeginMutation())
             {
-                MessageBox.Show(this, "Select one or more transactions first.", "Categorize Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            string? category = EmptyToNull(_quickCategory.Text);
-            string? categoryType = EmptyToNull(_quickCategoryType.Text);
-
-            if (category is null && categoryType is null)
+            try
             {
-                MessageBox.Show(this, "Enter a category or category type.", "Categorize Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
+                IReadOnlyList<ImportedTransaction> selected = GetSelectedTransactions();
 
-            int count = await _transactionWorkflowService.UpdateCategorizationAsync(selected.Select(transaction => transaction.ImportedTransactionId), category, categoryType).ConfigureAwait(true);
-            await RefreshAsync().ConfigureAwait(true);
-            MessageBox.Show(this, $"Updated {count} transaction(s).", "Categorize Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                if (selected.Count == 0)
+                {
+                    MessageBox.Show(this, "Select one or more transactions first.", "Categorize Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                string? category = EmptyToNull(_quickCategory.Text);
+                string? categoryType = EmptyToNull(_quickCategoryType.Text);
+
+                if (category is null && categoryType is null)
+                {
+                    MessageBox.Show(this, "Enter a category or category type.", "Categorize Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                int count = await _transactionWorkflowService.UpdateCategorizationAsync(selected.Select(transaction => transaction.ImportedTransactionId), category, categoryType).ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                await RefreshAsync().ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                MessageBox.Show(this, $"Updated {count} transaction(s).", "Categorize Transactions", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            finally
+            {
+                EndMutation();
+            }
         }
 
         private async Task CreateRuleAndApplyAsync()
         {
-            IReadOnlyList<ImportedTransaction> selected = GetSelectedTransactions();
-
-            if (selected.Count == 0)
-            {
-                MessageBox.Show(this, "Select a transaction to use as the rule example.", "Create Rule", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            ImportedTransaction example = selected[0];
-            string? category = EmptyToNull(_quickCategory.Text) ?? example.Category;
-            string? categoryType = EmptyToNull(_quickCategoryType.Text) ?? example.SpendingClass;
-
-            if (category is null && categoryType is null)
-            {
-                MessageBox.Show(this, "Enter or select a category before creating a rule.", "Create Rule", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                return;
-            }
-
-            FinancialRule rule = new()
-            {
-                RuleName = BuildRuleName(example, category, categoryType),
-                Priority = 1000,
-                MatchDescription = example.Description,
-                MatchType = example.Type,
-                DescriptionMatchMode = _quickRuleMode.SelectedItem?.ToString() ?? RuleMatchModes.Exact,
-                TypeMatchMode = RuleMatchModes.Exact,
-                Category = category,
-                SpendingClass = categoryType,
-                Merchant = example.Merchant,
-                IsIncome = example.IsIncome,
-                IsTransfer = example.IsTransfer,
-                IsActive = true,
-                Notes = "Created from the Transactions quick categorize workflow."
-            };
-
-            using QuickRuleForm form = new(rule, _categories, _categoryTypes);
-
-            if (form.ShowDialog(this) != DialogResult.OK)
+            if (!TryBeginMutation())
             {
                 return;
             }
 
-            int count = await _transactionWorkflowService.CreateRuleAndApplyAsync(form.Rule).ConfigureAwait(true);
-            await RefreshAsync().ConfigureAwait(true);
-            MessageBox.Show(this, $"Created rule and updated {count} matching transaction(s).", "Create Rule", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            try
+            {
+                IReadOnlyList<ImportedTransaction> selected = GetSelectedTransactions();
+
+                if (selected.Count == 0)
+                {
+                    MessageBox.Show(this, "Select a transaction to use as the rule example.", "Create Rule", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                ImportedTransaction example = selected[0];
+                string? category = EmptyToNull(_quickCategory.Text) ?? example.Category;
+                string? categoryType = EmptyToNull(_quickCategoryType.Text) ?? example.SpendingClass;
+
+                if (category is null && categoryType is null)
+                {
+                    MessageBox.Show(this, "Enter or select a category before creating a rule.", "Create Rule", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    return;
+                }
+
+                FinancialRule rule = new()
+                {
+                    RuleName = BuildRuleName(example, category, categoryType),
+                    Priority = 1000,
+                    MatchDescription = example.Description,
+                    MatchType = example.Type,
+                    DescriptionMatchMode = _quickRuleMode.SelectedItem?.ToString() ?? RuleMatchModes.Exact,
+                    TypeMatchMode = RuleMatchModes.Exact,
+                    Category = category,
+                    SpendingClass = categoryType,
+                    Merchant = example.Merchant,
+                    IsIncome = null,
+                    IsTransfer = null,
+                    IsActive = true,
+                    Notes = "Created from the Transactions quick categorize workflow."
+                };
+
+                using QuickRuleForm form = new(rule, _categories, _categoryTypes);
+
+                if (form.ShowDialog(this) != DialogResult.OK)
+                {
+                    return;
+                }
+
+                int count = await _transactionWorkflowService.CreateRuleAndApplyAsync(form.Rule).ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                await RefreshAsync().ConfigureAwait(true);
+
+                if (!IsPageActive)
+                {
+                    return;
+                }
+
+                string message = form.Rule.IsActive ? $"Created rule and updated {count} matching transaction(s)." : "Saved an inactive rule. Activate it from Rules when you are ready to use it.";
+                MessageBox.Show(this, message, "Create Rule", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            finally
+            {
+                EndMutation();
+            }
+        }
+
+        private bool TryBeginMutation()
+        {
+            if (!IsPageActive || _mutationInProgress)
+            {
+                return false;
+            }
+
+            _mutationInProgress = true;
+
+            foreach (Button button in _mutationButtons)
+            {
+                button.Enabled = false;
+            }
+
+            return true;
+        }
+
+        private void EndMutation()
+        {
+            _mutationInProgress = false;
+
+            if (!IsPageActive)
+            {
+                return;
+            }
+
+            foreach (Button button in _mutationButtons)
+            {
+                button.Enabled = true;
+            }
         }
 
         private IReadOnlyList<ImportedTransaction> GetSelectedTransactions()
@@ -482,7 +696,7 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private void PopulateQuickFieldsFromSelection()
         {
-            if (_bindingSource.Current is not ImportedTransaction selected)
+            if (!IsPageActive || _bindingSource.Current is not ImportedTransaction selected)
             {
                 return;
             }
@@ -524,6 +738,8 @@ namespace PersonalFinanceManager.App.UI.Views
             string trimmed = value.Trim();
             return string.IsNullOrWhiteSpace(trimmed) ? null : trimmed;
         }
+
+        private sealed record CategoryOptions(IReadOnlyList<string> Categories, IReadOnlyList<string> CategoryTypes);
 
         private sealed class AccountOption
         {

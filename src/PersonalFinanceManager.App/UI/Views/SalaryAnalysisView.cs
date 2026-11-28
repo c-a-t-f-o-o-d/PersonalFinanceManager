@@ -8,10 +8,12 @@ using PersonalFinanceManager.Application.Services.Contracts;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class SalaryAnalysisView : UserControl, IPageLayoutControl
+    public sealed class SalaryAnalysisView : AsyncPageControl, IPageLayoutControl
     {
         private readonly IAnalysisService _analysisService;
         private readonly SalaryRequirementCalculator _calculator = new();
+        private readonly TabControl _sections = new();
+        private readonly TabPage _resultsTab = new("Results");
         private readonly ComboBox _accountFilter = new();
         private readonly DateTimePicker _fromDate = new();
         private readonly DateTimePicker _toDate = new();
@@ -45,7 +47,7 @@ namespace PersonalFinanceManager.App.UI.Views
         private readonly BindingSource _breakdownSource = new();
         private readonly BindingSource _inputSource = new();
         private readonly BindingSource _monthlySource = new();
-        private IReadOnlyList<Account> _accounts = Array.Empty<Account>();
+        private bool _bindingAccounts;
         private IReadOnlyList<SalarySpendingScopeOption> _scopeOptions = Array.Empty<SalarySpendingScopeOption>();
         private decimal _spousePostedMonthlyNetIncome;
 
@@ -53,6 +55,8 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             _analysisService = analysisService;
             InitializeLayout();
+            BindAccounts(Array.Empty<Account>());
+            SetLastMonthsWithoutRefresh(12);
         }
 
         public int PreferredPageHeight => 1520;
@@ -60,10 +64,13 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
-            await LoadAccountsAsync().ConfigureAwait(true);
-            SetLastMonthsWithoutRefresh(12);
-            await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
-            await RefreshAsync().ConfigureAwait(true);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
+            await Task.WhenAll(LoadAccountsAsync(), RefreshAsync()).ConfigureAwait(true);
         }
 
         private void InitializeLayout()
@@ -74,66 +81,56 @@ namespace PersonalFinanceManager.App.UI.Views
             TableLayoutPanel root = new()
             {
                 Dock = DockStyle.Fill,
-                RowCount = 5,
+                ColumnCount = 1,
+                RowCount = 3,
                 BackColor = UiTheme.AppBackground,
-                AutoScroll = false
+                AutoScroll = false,
+                Margin = Padding.Empty
             };
 
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 700));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 106));
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 190));
+            root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
             root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 42));
             Controls.Add(root);
 
-            CardPanel setupCard = new()
+            TableLayoutPanel actions = new()
             {
                 Dock = DockStyle.Fill,
-                Margin = new Padding(0, 0, 0, 12),
-                Padding = new Padding(16, 12, 16, 12)
+                ColumnCount = 2,
+                RowCount = 1,
+                Margin = Padding.Empty
             };
 
-            root.Controls.Add(setupCard, 0, 0);
-            BuildSetupCard(setupCard);
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 144));
+            actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            Button calculate = new() { Text = "Calculate", Dock = DockStyle.Fill, Margin = new Padding(0, 3, 8, 5) };
+            UiTheme.StylePrimaryButton(calculate);
 
-            TableLayoutPanel metricRow = new()
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 4,
-                BackColor = UiTheme.AppBackground,
-                Margin = new Padding(0, 0, 0, 12)
-            };
+            calculate.Click += async (_, _) => await Task.WhenAll(LoadAccountsAsync(), RefreshAsync(showResults: true)).ConfigureAwait(true);
 
-            for (int index = 0; index < 4; index++)
-            {
-                metricRow.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 25F));
-            }
+            actions.Controls.Add(calculate, 0, 0);
+            _periodSummary.Dock = DockStyle.Fill;
+            _periodSummary.TextAlign = ContentAlignment.MiddleLeft;
+            _periodSummary.Tag = "SecondaryText";
+            _periodSummary.AutoEllipsis = true;
+            actions.Controls.Add(_periodSummary, 1, 0);
+            root.Controls.Add(actions, 0, 0);
 
-            root.Controls.Add(metricRow, 0, 1);
-            metricRow.Controls.Add(BuildMetricCard("Monthly target", _spendingMetric), 0, 0);
-            metricRow.Controls.Add(BuildMetricCard("Required gross salary", _salaryMetric), 1, 0);
-            metricRow.Controls.Add(BuildMetricCard("Take-home estimate", _takeHomeMetric), 2, 0);
-            metricRow.Controls.Add(BuildMetricCard("Taxes and FICA", _taxMetric), 3, 0);
-
-            CardPanel chartCard = new()
-            {
-                Dock = DockStyle.Fill,
-                Padding = new Padding(16),
-                Margin = new Padding(0, 0, 0, 12)
-            };
-
-            root.Controls.Add(chartCard, 0, 2);
-            BuildChartCard(chartCard);
-
-            CardPanel gridCard = new()
-            {
-                Dock = DockStyle.Fill,
-                Padding = new Padding(12),
-                Margin = new Padding(0, 0, 0, 8)
-            };
-
-            root.Controls.Add(gridCard, 0, 3);
-            BuildGridTabs(gridCard);
+            _sections.Name = "SalarySections";
+            _sections.Dock = DockStyle.Fill;
+            _sections.Padding = new Point(12, 6);
+            root.Controls.Add(_sections, 0, 1);
+            TabPage scopeTab = new("Spending Basis") { AutoScroll = true };
+            TabPage bucketsTab = new("Spending Buckets");
+            TabPage taxTab = new("Tax & Paycheck") { AutoScroll = true };
+            TabPage allowanceTab = new("Allowances") { AutoScroll = true };
+            _sections.TabPages.AddRange([scopeTab, bucketsTab, taxTab, allowanceTab, _resultsTab]);
+            BuildSpendingBasisTab(scopeTab);
+            BuildSpendingBucketsTab(bucketsTab);
+            BuildTaxTab(taxTab);
+            BuildAllowanceTab(allowanceTab);
+            BuildResultsTab(_resultsTab);
 
             Label disclaimer = new()
             {
@@ -144,86 +141,129 @@ namespace PersonalFinanceManager.App.UI.Views
                 AutoEllipsis = true
             };
 
-            root.Controls.Add(disclaimer, 0, 4);
+            root.Controls.Add(disclaimer, 0, 2);
             UiTheme.ApplyTo(this);
         }
 
-        private void BuildSetupCard(Control parent)
+        private void BuildResultsTab(Control parent)
         {
             TableLayoutPanel layout = new()
             {
                 Dock = DockStyle.Fill,
+                ColumnCount = 1,
                 RowCount = 2,
-                BackColor = UiTheme.CardBackground
+                Padding = new Padding(8),
+                Margin = Padding.Empty
             };
 
-            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 96));
             layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             parent.Controls.Add(layout);
 
-            Label title = new()
-            {
-                Text = "Salary Needed Setup",
-                Dock = DockStyle.Fill,
-                Font = UiTheme.SectionTitleFont
-            };
-
-            layout.Controls.Add(title, 0, 0);
-
-            TabControl tabs = new()
+            TableLayoutPanel metricRow = new()
             {
                 Dock = DockStyle.Fill,
-                Padding = new Point(14, 6)
+                ColumnCount = 4,
+                BackColor = UiTheme.AppBackground,
+                Margin = new Padding(0, 0, 0, 8)
             };
 
-            layout.Controls.Add(tabs, 0, 1);
-            TabPage scopeTab = new("Spending Basis");
-            TabPage taxTab = new("Tax & Paycheck");
-            TabPage allowanceTab = new("Allowances");
-            tabs.TabPages.Add(scopeTab);
-            tabs.TabPages.Add(taxTab);
-            tabs.TabPages.Add(allowanceTab);
-            BuildSpendingBasisTab(scopeTab);
-            BuildTaxTab(taxTab);
-            BuildAllowanceTab(allowanceTab);
+            layout.Controls.Add(metricRow, 0, 0);
+            CardPanel[] cards =
+            [
+                BuildMetricCard("Monthly target", _spendingMetric),
+                BuildMetricCard("Required gross salary", _salaryMetric),
+                BuildMetricCard("Take-home estimate", _takeHomeMetric),
+                BuildMetricCard("Taxes and FICA", _taxMetric)
+            ];
+
+            metricRow.Controls.AddRange(cards);
+            metricRow.Resize += (_, _) => ArrangeMetricCards(layout, metricRow, cards);
+            ArrangeMetricCards(layout, metricRow, cards);
+
+            CardPanel gridCard = new()
+            {
+                Dock = DockStyle.Fill,
+                Padding = new Padding(8),
+                Margin = Padding.Empty
+            };
+
+            layout.Controls.Add(gridCard, 0, 1);
+            BuildGridTabs(gridCard);
+        }
+
+        private static void ArrangeMetricCards(TableLayoutPanel parent, TableLayoutPanel metrics, IReadOnlyList<CardPanel> cards)
+        {
+            int columns = metrics.ClientSize.Width < metrics.LogicalToDeviceUnits(850) ? 2 : 4;
+            int rows = cards.Count / columns;
+            int height = metrics.LogicalToDeviceUnits(96) * rows;
+
+            if (metrics.ColumnCount == columns && metrics.RowCount == rows && parent.RowStyles[0].Height == height)
+            {
+                return;
+            }
+
+            metrics.SuspendLayout();
+            metrics.ColumnStyles.Clear();
+            metrics.RowStyles.Clear();
+            metrics.ColumnCount = columns;
+            metrics.RowCount = rows;
+
+            for (int column = 0; column < columns; column++)
+            {
+                metrics.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100F / columns));
+            }
+
+            for (int row = 0; row < rows; row++)
+            {
+                metrics.RowStyles.Add(new RowStyle(SizeType.Percent, 100F / rows));
+            }
+
+            for (int index = 0; index < cards.Count; index++)
+            {
+                metrics.SetCellPosition(cards[index], new TableLayoutPanelCellPosition(index % columns, index / columns));
+            }
+
+            parent.RowStyles[0].Height = height;
+            metrics.ResumeLayout(true);
         }
 
         private void BuildSpendingBasisTab(Control parent)
         {
-            TableLayoutPanel layout = new()
-            {
-                Dock = DockStyle.Fill,
-                ColumnCount = 2,
-                RowCount = 1,
-                Padding = new Padding(10),
-                BackColor = UiTheme.CardBackground
-            };
-
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 610));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            parent.Controls.Add(layout);
-
             TableLayoutPanel left = new()
             {
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.Top,
+                Height = 360,
+                ColumnCount = 1,
                 RowCount = 6,
-                BackColor = UiTheme.CardBackground
+                Padding = new Padding(12),
+                BackColor = UiTheme.CardBackground,
+                Margin = Padding.Empty
             };
 
-            left.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-            left.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-            left.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-            left.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
-            left.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+            left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+            for (int index = 0; index < 5; index++)
+            {
+                left.RowStyles.Add(new RowStyle(SizeType.Absolute, 46));
+            }
+
             left.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-            layout.Controls.Add(left, 0, 0);
+            parent.Controls.Add(left);
             FlowLayoutPanel row1 = BuildFlowRow(true);
             left.Controls.Add(row1, 0, 0);
             AddFilterLabel(row1, "Account", 74);
             _accountFilter.DropDownStyle = ComboBoxStyle.DropDownList;
             _accountFilter.Width = 405;
             row1.Controls.Add(_accountFilter);
-            _accountFilter.SelectedIndexChanged += async (_, _) => await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
+            _accountFilter.SelectedIndexChanged += async (_, _) =>
+            {
+                if (!_bindingAccounts && IsPageActive)
+                {
+                    await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
+                }
+            };
             FlowLayoutPanel row2 = BuildFlowRow(true);
             left.Controls.Add(row2, 0, 1);
             AddFilterLabel(row2, "From", 74);
@@ -264,36 +304,33 @@ namespace PersonalFinanceManager.App.UI.Views
             AddFilterLabel(row5, "Cushion/mo", 74);
             ConfigureMoneyInput(_monthlyCushion, 0M, 100000M, 100M, 116);
             row5.Controls.Add(_monthlyCushion);
-            Button refresh = new() { Text = "Calculate", Width = 110, Height = 31 };
-            UiTheme.StylePrimaryButton(refresh);
-
-            refresh.Click += async (_, _) =>
-            {
-                await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
-                await RefreshAsync().ConfigureAwait(true);
-            };
-
-            row5.Controls.Add(refresh);
             _modeHelp.Dock = DockStyle.Fill;
             _modeHelp.Tag = "SecondaryText";
             _modeHelp.Padding = new Padding(3, 4, 20, 0);
             _modeHelp.AutoEllipsis = true;
             left.Controls.Add(_modeHelp, 0, 5);
 
+            UpdateModeHelp();
+        }
+
+        private void BuildSpendingBucketsTab(Control parent)
+        {
             TableLayoutPanel right = new()
             {
                 Dock = DockStyle.Fill,
+                ColumnCount = 1,
                 RowCount = 4,
                 BackColor = UiTheme.CardBackground,
-                Padding = new Padding(14, 0, 0, 0)
+                Padding = new Padding(12),
+                Margin = Padding.Empty
             };
 
+            right.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             right.RowStyles.Add(new RowStyle(SizeType.Absolute, 30));
             right.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
             right.RowStyles.Add(new RowStyle(SizeType.Absolute, 40));
-            right.RowStyles.Add(new RowStyle(SizeType.Absolute, 36));
-            layout.Controls.Add(right, 1, 0);
-
+            right.RowStyles.Add(new RowStyle(SizeType.Absolute, 50));
+            parent.Controls.Add(right);
             Label scopeTitle = new()
             {
                 Text = "Optional spending buckets",
@@ -317,22 +354,22 @@ namespace PersonalFinanceManager.App.UI.Views
             _scopeSummary.TextAlign = ContentAlignment.MiddleLeft;
             _scopeSummary.AutoEllipsis = true;
             right.Controls.Add(_scopeSummary, 0, 3);
-            UpdateModeHelp();
         }
 
         private void BuildTaxTab(Control parent)
         {
             TableLayoutPanel layout = new()
             {
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.Top,
+                Height = 240,
                 ColumnCount = 2,
                 RowCount = 5,
                 Padding = new Padding(16, 12, 16, 12),
                 BackColor = UiTheme.CardBackground
             };
 
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
 
             for (int index = 0; index < 5; index++)
             {
@@ -362,15 +399,16 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             TableLayoutPanel layout = new()
             {
-                Dock = DockStyle.Fill,
+                Dock = DockStyle.Top,
+                Height = 400,
                 ColumnCount = 2,
                 RowCount = 7,
                 Padding = new Padding(16, 12, 16, 12),
                 BackColor = UiTheme.CardBackground
             };
 
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 320));
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 45));
 
             for (int index = 0; index < 6; index++)
             {
@@ -388,12 +426,16 @@ namespace PersonalFinanceManager.App.UI.Views
             _allowanceAnnualValue.Value = SalaryRequirementCalculator.LegacyW4AllowanceAmountAnnual;
             AddLabeledControl(layout, 3, "Spouse gross income per year", _spouseGrossIncome);
             ConfigureMoneyInput(_spouseGrossIncome, 0M, 1000000M, 1000M, 180);
-            layout.Controls.Add(_useSpousePostedIncome, 1, 4);
+            _useSpousePostedIncome.AutoSize = false;
+            _useSpousePostedIncome.Dock = DockStyle.Fill;
+            layout.Controls.Add(_useSpousePostedIncome, 0, 4);
+            layout.SetColumnSpan(_useSpousePostedIncome, 2);
             _spousePostedIncomeSummary.Dock = DockStyle.Fill;
             _spousePostedIncomeSummary.Tag = "SecondaryText";
             _spousePostedIncomeSummary.TextAlign = ContentAlignment.MiddleLeft;
             _spousePostedIncomeSummary.AutoEllipsis = true;
-            layout.Controls.Add(_spousePostedIncomeSummary, 1, 5);
+            layout.Controls.Add(_spousePostedIncomeSummary, 0, 5);
+            layout.SetColumnSpan(_spousePostedIncomeSummary, 2);
 
             Label help = new()
             {
@@ -418,7 +460,7 @@ namespace PersonalFinanceManager.App.UI.Views
             };
 
             layout.Controls.Add(label, 0, row);
-            input.Anchor = AnchorStyles.Left;
+            input.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             layout.Controls.Add(input, 1, row);
         }
 
@@ -494,7 +536,7 @@ namespace PersonalFinanceManager.App.UI.Views
             list.AutoScroll = true;
             list.Tag = "Scrollable";
             list.TabStop = true;
-            list.BackColor = Color.White;
+            list.BackColor = UiTheme.InputBackground;
             list.Padding = new Padding(4, 4, 4, 4);
             list.BorderStyle = BorderStyle.FixedSingle;
             list.Margin = new Padding(0, 0, 0, 6);
@@ -504,13 +546,17 @@ namespace PersonalFinanceManager.App.UI.Views
 
         private void AdjustScopeListItemWidths()
         {
-            int scrollbarAllowance = _scopeList.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth + 14 : 12;
-            int width = Math.Max(420, _scopeList.ClientSize.Width - scrollbarAllowance);
+            int width = Math.Max(1, _scopeList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - _scopeList.Padding.Horizontal - 4);
 
             foreach (Control control in _scopeList.Controls.Cast<Control>())
             {
                 control.Width = width;
+                int textWidth = Math.Max(1, width - control.LogicalToDeviceUnits(32));
+                Size textSize = TextRenderer.MeasureText(control.Text, control.Font, new Size(textWidth, int.MaxValue), TextFormatFlags.WordBreak | TextFormatFlags.TextBoxControl);
+                control.Height = Math.Max(control.LogicalToDeviceUnits(30), textSize.Height + control.LogicalToDeviceUnits(8));
             }
+
+            UpdateScopeListScrollExtent();
         }
 
         private void UpdateScopeListScrollExtent()
@@ -595,6 +641,12 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             TabControl tabs = new() { Dock = DockStyle.Fill, Padding = new Point(12, 6) };
             parent.Controls.Add(tabs);
+            TabPage chartTab = new("Take-home chart") { AutoScroll = true };
+            CardPanel chartCard = new() { Dock = DockStyle.Top, Height = 280, Padding = new Padding(12), Margin = Padding.Empty };
+            chartTab.Controls.Add(chartCard);
+            BuildChartCard(chartCard);
+            chartTab.Resize += (_, _) => chartCard.Height = Math.Max(chartTab.ClientSize.Height, chartCard.LogicalToDeviceUnits(260));
+            tabs.TabPages.Add(chartTab);
             TabPage breakdownTab = new("Tax Breakdown");
             tabs.TabPages.Add(breakdownTab);
             ConfigureBreakdownGrid();
@@ -680,19 +732,38 @@ namespace PersonalFinanceManager.App.UI.Views
             };
         }
 
-        private async Task LoadAccountsAsync()
+        private Task LoadAccountsAsync()
         {
-            _accounts = await _analysisService.GetAccountsAsync().ConfigureAwait(true);
+            return LoadLatestAsync("accounts", "Loading account options...", _analysisService.GetAccountsAsync, BindAccounts);
+        }
+
+        private void BindAccounts(IReadOnlyList<Account> accounts)
+        {
+            int? selectedAccountId = (_accountFilter.SelectedItem as AccountOption)?.AccountId;
             List<AccountOption> options = new() { new AccountOption(null, "All Accounts") };
-            options.AddRange(_accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
-            _accountFilter.DataSource = options;
-            _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
-            _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+            options.AddRange(accounts.Select(account => new AccountOption(account.AccountId, account.DisplayName)));
+            _bindingAccounts = true;
+
+            try
+            {
+                _accountFilter.DisplayMember = nameof(AccountOption.DisplayName);
+                _accountFilter.ValueMember = nameof(AccountOption.AccountId);
+                _accountFilter.DataSource = options;
+                _accountFilter.SelectedItem = options.FirstOrDefault(option => option.AccountId == selectedAccountId) ?? options[0];
+            }
+            finally
+            {
+                _bindingAccounts = false;
+            }
         }
 
         private async Task LoadSpendingScopeOptionsAsync()
         {
-            HashSet<string> selectedKeys = GetSelectedBuckets().Select(BuildBucketKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             SalarySpendingFilter filter = BuildScopeOptionFilter();
 
             if (filter.FromDate.HasValue && filter.ToDate.HasValue && filter.FromDate > filter.ToDate)
@@ -700,7 +771,14 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            _scopeOptions = await _analysisService.GetSalarySpendingScopeOptionsAsync(filter).ConfigureAwait(true);
+            await LoadLatestAsync("salary-data", "Loading spending buckets...",
+                cancellationToken => _analysisService.GetSalarySpendingScopeOptionsAsync(filter, cancellationToken), ApplyScopeOptions).ConfigureAwait(true);
+        }
+
+        private void ApplyScopeOptions(IReadOnlyList<SalarySpendingScopeOption> options)
+        {
+            HashSet<string> selectedKeys = GetSelectedBuckets().Select(BuildBucketKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            _scopeOptions = options;
             _scopeList.SuspendLayout();
             _scopeList.Controls.Clear();
             _scopeCheckBoxes.Clear();
@@ -741,7 +819,7 @@ namespace PersonalFinanceManager.App.UI.Views
                 Text = FormatBucketText(option),
                 Checked = isChecked,
                 AutoSize = false,
-                Width = Math.Max(420, _scopeList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 14),
+                Width = Math.Max(1, _scopeList.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - _scopeList.Padding.Horizontal - 4),
                 Height = 30,
                 Tag = option,
                 TextAlign = ContentAlignment.MiddleLeft,
@@ -776,14 +854,12 @@ namespace PersonalFinanceManager.App.UI.Views
             _fromDate.Value = new DateTime(today.Year, 1, 1);
             _toDate.Checked = true;
             _toDate.Value = today;
-            await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
         }
 
         private async Task SetLastMonthsAsync(int monthCount)
         {
             SetLastMonthsWithoutRefresh(monthCount);
-            await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
         }
 
@@ -801,12 +877,16 @@ namespace PersonalFinanceManager.App.UI.Views
         {
             _fromDate.Checked = false;
             _toDate.Checked = false;
-            await LoadSpendingScopeOptionsAsync().ConfigureAwait(true);
             await RefreshAsync().ConfigureAwait(true);
         }
 
-        private async Task RefreshAsync()
+        private async Task RefreshAsync(bool showResults = false)
         {
+            if (!IsPageActive)
+            {
+                return;
+            }
+
             SalarySpendingFilter spendingFilter = BuildSpendingFilter();
 
             if (spendingFilter.FromDate.HasValue && spendingFilter.ToDate.HasValue && spendingFilter.FromDate > spendingFilter.ToDate)
@@ -815,7 +895,31 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            SalarySpendingAnalysis spending = await _analysisService.GetSalarySpendingAnalysisAsync(spendingFilter).ConfigureAwait(true);
+            SalarySpendingFilter scopeFilter = BuildScopeOptionFilter();
+            SalaryRequirementInput salaryInput = BuildSalaryInput(0M);
+            HashSet<string> selectedKeys = spendingFilter.SelectedSpendingBuckets.Select(BuildBucketKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            await LoadLatestAsync("salary-data", "Calculating salary needs...", async cancellationToken =>
+            {
+                IReadOnlyList<SalarySpendingScopeOption> options = await _analysisService.GetSalarySpendingScopeOptionsAsync(scopeFilter, cancellationToken).ConfigureAwait(true);
+                cancellationToken.ThrowIfCancellationRequested();
+                spendingFilter.SelectedSpendingBuckets = options.Where(option => selectedKeys.Contains(BuildBucketKey(option))).ToArray();
+                SalarySpendingAnalysis spending = await _analysisService.GetSalarySpendingAnalysisAsync(spendingFilter, cancellationToken).ConfigureAwait(true);
+                return (Options: options, Spending: spending);
+            }, result =>
+            {
+                ApplyScopeOptions(result.Options);
+                ApplyAnalysis(result.Spending, salaryInput);
+
+                if (showResults)
+                {
+                    _sections.SelectedTab = _resultsTab;
+                }
+            }).ConfigureAwait(true);
+        }
+
+        private void ApplyAnalysis(SalarySpendingAnalysis spending, SalaryRequirementInput input)
+        {
             IReadOnlyList<IncomeOwnerSummary> incomeSummaries = spending.IncomeOwnerSummaries;
             UpdateIncomeOwnerSummary(incomeSummaries);
 
@@ -840,7 +944,8 @@ namespace PersonalFinanceManager.App.UI.Views
                 return;
             }
 
-            SalaryRequirementInput input = BuildSalaryInput(spending.TargetMonthlySpending);
+            input.TargetMonthlySpending = spending.TargetMonthlySpending;
+            input.SpouseMonthlyNetIncome = input.SpouseIncomeMode == SpouseIncomeMode.PostedNet ? Math.Max(0M, _spousePostedMonthlyNetIncome) : 0M;
 
             if (input.SpouseIncomeMode == SpouseIncomeMode.PostedNet &&
                 input.SpouseMonthlyNetIncome > 0M &&
@@ -967,7 +1072,7 @@ namespace PersonalFinanceManager.App.UI.Views
             _modeHelp.Text = mode switch
             {
                 SalarySpendingMode.RequiredBillsOnly => "Uses only active required bills. This is useful for a bare-minimum survival number.",
-                SalarySpendingMode.SelectedCategoriesOnly => "Uses only the checked spending buckets below. Use this for focused questions such as groceries, medical, or gas only.",
+                SalarySpendingMode.SelectedCategoriesOnly => "Uses only the checked items on Spending Buckets. Use this for focused questions such as groceries, medical, or gas only.",
                 SalarySpendingMode.RequiredBillsPlusSelectedCategories => "Uses required bills plus selected net spending. Matching historical bill payments are replaced by planned bills; uncertain overlaps require review.",
                 _ => "Uses net expenses after refunds. Confirmed transfers, mirrored purchases, and allocated funding are excluded; import coverage still requires review."
             };

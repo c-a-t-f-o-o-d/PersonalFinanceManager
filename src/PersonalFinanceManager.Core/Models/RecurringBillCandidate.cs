@@ -20,5 +20,7 @@ namespace PersonalFinanceManager.Core.Models
         public string? SuggestedFrequency { get; set; }
         public string FrequencyDescription => SuggestedFrequency ?? "Choose frequency";
         public bool AlreadyExists { get; set; }
+        public string? MatchingBillName { get; set; }
+        public bool RequiresMatchReview { get; set; }
     }
 }

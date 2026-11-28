@@ -32,16 +32,27 @@ namespace PersonalFinanceManager.App.UI.Controls
             }
         } = 12;
 
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            e.Graphics.Clear(Parent?.BackColor ?? UiTheme.AppBackground);
+        }
+
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (Width < 2 || Height < 2)
+            {
+                return;
+            }
+
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             Rectangle bounds = new(0, 0, Width - 1, Height - 1);
-            int radius = Math.Min(CornerRadius, Math.Max(0, Math.Min(bounds.Width, bounds.Height) / 2));
+            int radius = Math.Min(LogicalToDeviceUnits(CornerRadius), Math.Max(0, Math.Min(bounds.Width, bounds.Height) / 2));
             using GraphicsPath path = CreateRoundRectangle(bounds, radius);
             using SolidBrush background = new(UiTheme.CardBackground);
             using Pen border = new(UiTheme.CardBorder);
             e.Graphics.FillPath(background, path);
             e.Graphics.DrawPath(border, path);
+            base.OnPaint(e);
         }
 
         protected override void OnResize(EventArgs eventargs)

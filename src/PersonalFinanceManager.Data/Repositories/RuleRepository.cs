@@ -49,6 +49,16 @@ namespace PersonalFinanceManager.Data.Repositories
             return rules;
         }
 
+        public Task<IReadOnlyList<string>> GetCategoryValuesAsync(CancellationToken cancellationToken = default)
+        {
+            return new TransactionRepository(_connectionFactory).GetCategoryValuesAsync(cancellationToken);
+        }
+
+        public Task<IReadOnlyList<string>> GetCategoryTypeValuesAsync(CancellationToken cancellationToken = default)
+        {
+            return new TransactionRepository(_connectionFactory).GetCategoryTypeValuesAsync(cancellationToken);
+        }
+
         public async Task<int> SaveAsync(FinancialRule rule, CancellationToken cancellationToken = default)
         {
             if (rule.RuleId == 0)
@@ -182,6 +192,7 @@ namespace PersonalFinanceManager.Data.Repositories
                 IncomeOwner = reader.GetStringOrNull("IncomeOwner"),
                 IsActive = reader.GetBooleanValue("IsActive"),
                 Notes = reader.GetStringOrNull("Notes"),
+                StarterRuleCode = reader.GetStringOrNull("StarterRuleCode"),
                 CreatedAtUtc = reader.GetDateTimeValue("CreatedAtUtc"),
                 UpdatedAtUtc = reader.GetDateTimeValue("UpdatedAtUtc")
             };

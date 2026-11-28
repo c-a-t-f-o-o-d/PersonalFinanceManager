@@ -6,10 +6,10 @@ The project is intentionally self-hosted. Your database is under your control, a
 
 ## Highlights
 
-- Windows Forms desktop application built with C# and .NET 10.
+- Windows Forms desktop application built with C# and .NET 10, with persistent light and dark themes.
 - SQL Server-backed data store with LocalDB setup for local evaluation.
 - ADO.NET data access using `Microsoft.Data.SqlClient`; no Entity Framework dependency.
-- User-defined transaction rules with direction-aware matching.
+- Common starter categories and editable rule templates, with direction-aware matching and explicit income/transfer treatment.
 - Import support for standard financial files, provider CSV exports, and normalized activity CSV.
 - Duplicate-review workflow for overlapping imports.
 - Transaction-link workflow for account transfers, wallet funding, and credit-card payments.
@@ -17,7 +17,7 @@ The project is intentionally self-hosted. Your database is under your control, a
 - Expense analysis with category and category-type breakdowns.
 - Money-in / money-out analysis.
 - Salary-needed analysis using spending trends, bills, and paycheck assumptions.
-- Recurring bill tracking and required-expense support.
+- Recurring bills with former-payee and statement-description aliases, so a provider change can remain one planned obligation.
 - Runway analysis based on balances and required bills.
 - Data-health checks to highlight records that may make reporting unreliable.
 - Backup/export tools and sanitized demo data for evaluation.
@@ -95,6 +95,20 @@ On first launch, PersonalFinanceManager opens the Setup page if no usable connec
 4. Optionally select **Load Demo Data** if you are using an empty evaluation database.
 5. Explore Accounts, Transactions, Rules, Expense Analysis, Money In/Out, Salary Needed, Bills, Runway, and Data Health.
 
+### Loading and refreshing pages
+
+Transactions and reports load automatically when opened. Each report queries the database independently, so opening Transactions or pressing Apply is not a prerequisite. The Transactions row limit and filters affect that table; reports use their own account, date, and detail filters.
+
+Pages show a loading indicator while queries are pending. Account and category options can finish after the main results appear. Use Apply or Refresh after changing filters, and retry or reopen a page if its data could not be loaded. Navigating away cancels pending reads; confirmed saves, imports, and rule updates continue to completion. Reopen or refresh the relevant page to see those changes.
+
+### Appearance
+
+Use the sun/moon button beneath **Database** in the sidebar or the appearance option in **Settings** to switch between light and dark modes. The icon shows the current mode: a sun for light mode and a moon for dark mode. Its tooltip identifies the mode it will switch to. The preference is saved for your Windows profile and restored at the next launch. Switching themes retains the open page, report filters, selections, and unsaved edits. Colored navigation icons help distinguish pages while the dark palette uses neutral charcoal and grayscale surfaces. Report charts, grids, edit dialogs, date fields, and calendar popups use the current theme.
+
+Table pages fit the available window so the table handles vertical scrolling. Longer report and planning sections are organized into tabs, avoiding a second page scrollbar around a scrolling table. Setup and Settings use one page-level scroll area for their forms.
+
+Windows high-contrast colors take precedence when high contrast is enabled. Native title bars and system-owned controls follow the capabilities of the installed Windows version; Windows 11 provides the most complete native dark-mode support.
+
 ### Network SQL Server setup
 
 For a shared SQL Server, open **Settings**, choose the network SQL template, replace the placeholders, save, and test the connection.
@@ -151,6 +165,14 @@ The [normalized CSV contract](IMPORTS.md#normalized-csv-contract) defines signed
 
 Rules assign category, category type, income/transfer flags, and optional owner information. Rule matching uses the amount's sign for `Deposit` or `Withdrawal`, even when a source uses a misleading type label. Manual entries and classifications marked **Keep these choices when rules are reapplied** are preserved. Link relationships remain separate from merchant categorization, so updating a merchant rule does not break a transfer or funding match.
 
+#### Starter categories and rules
+
+Database setup adds 28 common categories, 12 category types, and 14 editable starter rules. A **category** describes what an entry is for, such as Groceries or Mortgage. A **category type** groups categories for reporting, such as Food & Drink or Housing. The dropdowns include these choices together with your existing values, and you can still enter a custom value.
+
+On a new, empty database, four narrowly matched debit-fee rules are active: monthly maintenance, ATM, overdraft, and wire-transfer fees. The other ten rules are inactive templates. On an existing database, all newly added starter rules are inactive. Existing rules and transactions retain their classifications, and subsequent startup does not restore deleted templates or overwrite edits.
+
+Open **Rules**, choose a template, and match its description to an imported transaction before activating it. **Quick Rule** starts from the selected transaction. Each rule's income and transfer settings offer **Keep existing**, **Yes**, and **No**. Keep existing preserves the imported decision; choosing a category named Income or Transfers does not change financial treatment by itself. Confirm income sources and reconcile account transfers separately. Rule notes explain the intended use of each template.
+
 ### Transaction links
 
 Transaction links describe how retained account entries relate to the same purchase or movement of money. On **Transaction Links**, choose **Add Link**, select the source and linked entries, and choose the relationship:
@@ -190,6 +212,14 @@ Choose either posted spouse net income or modeled spouse gross income. Posted ta
 ### Recurring bills
 
 Bills can be added manually or created from recurring transaction candidates. Candidate frequency is inferred from the observed dates; ambiguous histories require a frequency selection. Required bills feed salary and runway calculations. Runway begins on the projection date and schedules known bill due dates. Income and bills with unknown due dates are explicitly shown as smoothed estimates, and missing or stale balance snapshots are highlighted.
+
+#### When a lender or service provider changes
+
+Keep one recurring bill for the ongoing obligation. For example, a mortgage sold to a new servicer can remain a single **Home mortgage** bill with its current planned amount, frequency, and due date. In the bill editor's **Matching** tab, record the former payee names and the exact statement descriptions used by both servicers. When replacing a saved bill's current payee or description, **Keep former names when replacing them** retains the prior values as aliases by default; clear it when correcting an erroneous name. Imported transaction descriptions remain unchanged.
+
+When a new recurring candidate belongs to an existing bill, choose **Attach to Existing Bill** to associate it with that bill instead of creating another bill. Association adds the confirmed statement description to the existing record; it does not add another planned monthly payment or change the planned amount. Review the bill amount if the actual payment changed.
+
+Matching is deliberately specific to the bill's account and category/type scope. Exact statement descriptions take precedence over broad payee names. Conflicting bill identities or a known description appearing in another category require review before a reliable salary or runway estimate can be produced. Equal amounts, a shared mortgage category, or similar names alone do not combine two obligations. Review existing duplicate bill records explicitly; this migration does not merge loan accounts or infer principal, interest, or escrow allocations.
 
 ### Data Health
 

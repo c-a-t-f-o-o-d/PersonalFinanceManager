@@ -17,12 +17,15 @@ namespace PersonalFinanceManager.Core.Models
         public bool IsRequired { get; set; } = true;
         public bool IsActive { get; set; } = true;
         public string? SourceDescription { get; set; }
+        public IReadOnlyList<string> PayeeAliases { get; set; } = [];
+        public IReadOnlyList<string> SourceDescriptionAliases { get; set; } = [];
         public DateOnly? FirstSeenDate { get; set; }
         public DateOnly? LastSeenDate { get; set; }
         public int TransactionCount { get; set; }
         public string? Notes { get; set; }
         public DateTime CreatedAtUtc { get; set; }
         public DateTime UpdatedAtUtc { get; set; }
+        public byte[] RowVersion { get; set; } = [];
     }
 
     public static class BillFrequencies

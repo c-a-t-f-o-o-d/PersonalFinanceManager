@@ -190,6 +190,11 @@ namespace PersonalFinanceManager.Data.Repositories
         {
             ArgumentNullException.ThrowIfNull(rule);
 
+            if (!rule.IsActive)
+            {
+                return 0;
+            }
+
             if (string.IsNullOrWhiteSpace(rule.MatchDescription))
             {
                 throw new InvalidOperationException("A rule must include description matching text before it can be applied.");
@@ -258,6 +263,7 @@ namespace PersonalFinanceManager.Data.Repositories
             await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
             await using SqlCommand command = connection.CreateCommand();
             command.CommandText = ReadSql("Transactions/GetDistinctTextValues.sql").Replace("/*COLUMN_NAME*/", columnName, StringComparison.Ordinal);
+            command.Parameters.Add(SqlParameters.NVarChar("@LookupGroup", columnName, 100));
             List<string> values = new();
             await using SqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 

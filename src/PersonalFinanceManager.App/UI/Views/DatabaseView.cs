@@ -1,8 +1,9 @@
+using PersonalFinanceManager.App.UI.Controls;
 using PersonalFinanceManager.Data.Database;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class DatabaseView : UserControl, IPageLayoutControl
+    public sealed class DatabaseView : AsyncPageControl, IPageLayoutControl
     {
         private readonly Func<Task> _initializeAsync;
         private readonly SchemaStatusService _schemaStatusService;
@@ -20,6 +21,12 @@ namespace PersonalFinanceManager.App.UI.Views
         protected override async void OnLoad(EventArgs e)
         {
             base.OnLoad(e);
+
+            if (!TryBeginInitialLoad())
+            {
+                return;
+            }
+
             await RefreshStatusAsync().ConfigureAwait(true);
         }
 
@@ -58,12 +65,16 @@ namespace PersonalFinanceManager.App.UI.Views
             _statusText.ScrollBars = ScrollBars.Vertical;
             _statusText.ReadOnly = true;
             root.Controls.Add(_statusText, 0, 1);
+            PageLayout.AutoSizeHeaders(root, 0);
         }
 
-        private async Task RefreshStatusAsync()
+        private Task RefreshStatusAsync()
         {
-            SchemaStatus status = await _schemaStatusService.GetStatusAsync().ConfigureAwait(true);
+            return LoadLatestAsync("database-status", "Loading database status...", token => _schemaStatusService.GetStatusAsync(token), ApplyStatus);
+        }
 
+        private void ApplyStatus(SchemaStatus status)
+        {
             _statusText.Text = $"Connection: {(status.Connected ? "Connected" : "Disconnected")}{Environment.NewLine}" +
                 $"Server version: {status.ServerVersion}{Environment.NewLine}" +
                 $"Database: {status.DatabaseName}{Environment.NewLine}" +

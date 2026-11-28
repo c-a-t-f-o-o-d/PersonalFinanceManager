@@ -1,9 +1,10 @@
+using PersonalFinanceManager.App.UI.Styling;
 using PersonalFinanceManager.Application.Services.Contracts;
 using PersonalFinanceManager.Core.Models;
 
 namespace PersonalFinanceManager.App.UI.Views
 {
-    public sealed class AccountReconciliationForm : Form
+    public sealed class AccountReconciliationForm : ThemedForm
     {
         private readonly IAccountWorkflowService _service;
         private readonly Account _account;
@@ -116,7 +117,7 @@ namespace PersonalFinanceManager.App.UI.Views
                     ClosingBalance = _closing.Value
                 }, record);
 
-                _result.ForeColor = result.IsBalanced ? Color.DarkGreen : Color.Firebrick;
+                UiTheme.SetTextRole(_result, result.IsBalanced ? "SuccessText" : "DangerText");
                 _result.Text = $"{(result.IsBalanced ? "Balances match" : "Balance difference found")}. Calculated closing balance: {result.ExpectedClosingBalance:C2}; statement: {result.ClosingBalance:C2}; difference: {result.Difference:C2}.\n"
                     + $"Included {result.TransactionCount} account entries; {result.DateFallbackCount} use transaction date because no posting date was imported. "
                     + "A matching balance does not rule out offsetting missing entries. Recorded checks reflect the ledger at the time of the check.";
