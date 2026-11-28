@@ -4,6 +4,22 @@ PersonalFinanceManager is a Windows desktop personal-finance application for peo
 
 The project is intentionally self-hosted. Your database is under your control, and the application does not send telemetry or financial data to a hosted service.
 
+## Screenshots
+
+![Expense Analysis in dark mode, with spending totals, category breakdowns, monthly trends, and the application sidebar.](assets/screenshots/expense-analysis-dark.png)
+
+All screenshots use fictional sample data from the same household. View the [light theme](assets/screenshots/expense-analysis-light.png) or open the [full screenshot gallery](SCREENSHOTS.md).
+
+| Transactions | Cash flow |
+| --- | --- |
+| [![Transactions with purchases, income, transfers, and card repayments.](assets/screenshots/transactions-dark.png)](assets/screenshots/transactions-dark.png) | [![Money In/Out with income, outflow, and monthly cash movement.](assets/screenshots/cash-flow-dark.png)](assets/screenshots/cash-flow-dark.png) |
+| Review imported activity and apply account, date, and category filters. | Follow money entering and leaving cash accounts. |
+
+| Recurring bills | Savings runway |
+| --- | --- |
+| [![Recurring bills for the sample household, including its home mortgage.](assets/screenshots/recurring-bills-dark.png)](assets/screenshots/recurring-bills-dark.png) | [![Savings runway showing available funds, required bills, and a balance projection.](assets/screenshots/savings-runway-dark.png)](assets/screenshots/savings-runway-dark.png) |
+| Keep required payments and provider changes attached to the same obligation. | Explore how balances and required bills affect a savings projection. |
+
 ## Highlights
 
 - Windows Forms desktop application built with C# and .NET 10, with persistent light and dark themes.
@@ -422,7 +438,6 @@ Near-term cleanup and public-readiness work:
 - Finish remaining service-boundary cleanup.
 - Validate clean-database provisioning from the consolidated schema baseline.
 - Expand tests around imports, linking, and reports.
-- Add screenshots after the UI and demo data stabilize. See `SCREENSHOTS.md` for the privacy checklist.
 - Decide on final product name before the first public release tag if `PersonalFinanceManager` is not kept.
 
 
@@ -435,7 +450,7 @@ Before publishing or tagging a release, review `RELEASE_CHECKLIST.md`. It contai
 - `ARCHITECTURE.md` summarizes project boundaries and data-access design.
 - `DEVELOPMENT.md` covers local development conventions.
 - `DEMO_WORKFLOW.md` provides a safe demo-data walkthrough.
-- `SCREENSHOTS.md` explains how to capture public-safe screenshots.
+- `SCREENSHOTS.md` presents the application gallery, including light and dark themes.
 - `ROADMAP.md` covers near-term cleanup and long-term feature direction.
 - `PRIVACY.md` covers the local data model, DPAPI account-number behavior, and public repository safety guidance.
 
